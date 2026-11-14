@@ -49,6 +49,7 @@ export async function submitProject(page: Page, sub: string) {
   await page.getByLabel("Code URL").fill("https://github.com/orpheus/big-project");
   await page.getByLabel("Playable URL").fill("https://big-project.example.com");
   await page.getByLabel("Description").fill("it plays music from your keyboard");
+  await page.getByLabel("YouTube link").fill("https://youtu.be/dQw4w9WgXcQ");
   await page.getByLabel("How'd you hear about us?").fill("slack");
   await page.getByRole("button", { name: "Pay 2 hours & submit" }).click();
   await expect(page).toHaveURL(/\/submissions\?submitted=1/);

@@ -146,14 +146,14 @@ export async function submitApplication(
       if (e instanceof HackatimeUnavailableError) return { ok: false, errors: { hackatimeProject: e.message.toLowerCase() } };
       throw e;
     }
-  } else {
-    const yt = await checkYouTubeVideo(content.videoUrl);
-    if (yt === "not_found") {
-      return { ok: false, errors: { videoUrl: "we couldn't find that video. make sure it's unlisted, not private" } };
-    }
-    if (yt === "unreachable") {
-      return { ok: false, errors: { videoUrl: "we couldn't reach youtube to check your video. try again in a minute" } };
-    }
+  }
+  // Both paths require a video. Validation guarantees it's set; the type allows legacy rows without one.
+  const yt = await checkYouTubeVideo(content.videoUrl!);
+  if (yt === "not_found") {
+    return { ok: false, errors: { videoUrl: "we couldn't find that video. make sure it's unlisted, not private" } };
+  }
+  if (yt === "unreachable") {
+    return { ok: false, errors: { videoUrl: "we couldn't reach youtube to check your video. try again in a minute" } };
   }
 
   const id = randomUUID();

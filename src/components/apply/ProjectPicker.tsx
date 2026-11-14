@@ -64,7 +64,7 @@ export function ProjectPicker({
     return (
       <p className="notice" role="status">
         none of your hackatime projects have 2 hours logged yet. keep building, or if you&apos;re brand new to hack club,
-        check &ldquo;request financial aid&rdquo; above to apply with a video instead.
+        check &ldquo;request financial aid&rdquo; above to apply without a project.
       </p>
     );
   }

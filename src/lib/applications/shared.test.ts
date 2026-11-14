@@ -14,6 +14,7 @@ const project: ApplicationInput = {
   codeUrl: "https://github.com/orpheus/big-project",
   playableUrl: "https://big-project.example.com",
   description: "a thing that does stuff",
+  videoUrl: "https://youtu.be/dQw4w9WgXcQ",
   heardFrom: "slack",
 };
 
@@ -32,7 +33,10 @@ describe("validateApplication — project path", () => {
     const r = validateApplication({ ...project, codeUrl: "http://www.github.com/orpheus/big-project.git/" });
     expect(r).toEqual({
       ok: true,
-      value: { kind: "project", content: { ...project, codeUrl: "https://github.com/orpheus/big-project", kind: undefined } },
+      value: {
+        kind: "project",
+        content: { ...project, codeUrl: "https://github.com/orpheus/big-project", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", kind: undefined },
+      },
     });
   });
 
@@ -52,7 +56,7 @@ describe("validateApplication — project path", () => {
     expect(!r.ok && r.errors.playableUrl).toMatch(/http/);
   });
 
-  it.each(["hackatimeProject", "codeUrl", "playableUrl", "description", "heardFrom"] as const)(
+  it.each(["hackatimeProject", "codeUrl", "playableUrl", "description", "videoUrl", "heardFrom"] as const)(
     "points out a missing %s",
     (field) => {
       const r = validateApplication({ ...project, [field]: "  " });
@@ -116,6 +120,7 @@ describe("missingItems", () => {
     expect(missingItems({ kind: "project", playableUrl: "x", description: "y", heardFrom: "z" })).toEqual([
       "a hackatime project",
       "a code url",
+      "your video link",
     ]);
   });
 

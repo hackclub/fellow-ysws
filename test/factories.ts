@@ -21,6 +21,7 @@ export const projectInput: ApplicationInput = {
   codeUrl: "https://github.com/orpheus/big-project",
   playableUrl: "https://big-project.example.com",
   description: "PLAINTEXT-DESCRIPTION",
+  videoUrl: "https://youtu.be/dQw4w9WgXcQ",
   heardFrom: "slack",
 };
 

@@ -11,7 +11,7 @@ export const howItWorks = [
   {
     eyebrow: "To apply",
     title: "A project + 2 hours™",
-    body: "pick a project you've logged on hackatime and pay the fee in hours, not dollars. brand new to hack club? ask for aid with a one minute video instead.",
+    body: "pick a project you've logged on hackatime, record a one minute video, and pay the fee in hours, not dollars. brand new to hack club? ask for aid instead of a project.",
   },
   {
     eyebrow: "Weeks 1–9",
@@ -35,7 +35,7 @@ export const faq: AccordionEntry[] = [
     answer: (
       <p>
         probably not. the project you apply with doesn&apos;t have to be your startup. if you&apos;re brand new to hack
-        club with a wild idea, you can apply for financial aid with a one minute video instead of a project.
+        club with a wild idea, you can apply for financial aid instead of with a project.
       </p>
     ),
   },
@@ -56,7 +56,7 @@ export const faq: AccordionEntry[] = [
     answer: (
       <p>
         aid is for people entirely new to hack club with a crazy idea, not for anyone who&apos;d rather not pay. you
-        submit a one minute unlisted youtube video of your team and what your startup is about instead of a project.
+        skip the project and the 2 hour fee, and just send the one minute video every applicant records.
         you can only ask for aid once.
       </p>
     ),

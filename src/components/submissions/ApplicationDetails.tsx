@@ -32,6 +32,14 @@ export function ApplicationDetails({ app }: { app: ApplicationView }) {
         </dd>
         <dt>Description</dt>
         <dd>{c.description}</dd>
+        {c.videoUrl && (
+          <>
+            <dt>Video</dt>
+            <dd>
+              <a href={c.videoUrl} rel="noopener noreferrer" target="_blank">{c.videoUrl}</a>
+            </dd>
+          </>
+        )}
         <dt>Heard from</dt>
         <dd>{c.heardFrom}</dd>
         <dt>Submitted</dt>

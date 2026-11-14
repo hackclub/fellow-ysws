@@ -9,6 +9,9 @@ import type { TeamView } from "@/lib/teams/service";
 import { ProjectPicker, type ProjectsState } from "./ProjectPicker";
 import { TeamSection } from "./TeamSection";
 
+const EXAMPLE_VIDEOS_URL =
+  "https://www.youtube.com/watch?v=RJsPYnx4av4&list=PLK7HoSSSROuL9e1bdG_oGEo-jSPuOjw6X";
+
 type Values = Required<Omit<ApplicationInput, "kind">>;
 
 const EMPTY: Values = {
@@ -107,7 +110,7 @@ export function ApplyForm({
           </strong>
           <span className="muted">
             {" "}
-            — apply with a one minute video instead of a project.
+            — apply without a hackatime project.
           </span>
         </Checkbox>
         <p className="small muted" id="aid-explainer">
@@ -151,11 +154,36 @@ export function ApplyForm({
             <Field label="How'd you hear about us?" placeholder="slack, a friend, a poster…" {...text("heardFrom")} />
           </section>
 
-          <TeamSection step={3} team={team} onTeam={setTeam} appUrl={appUrl} error={errors.team} />
+          <section className="step" aria-labelledby="step-3">
+            <h2 className="step-title" id="step-3">
+              3. Record a 1 minute video.
+            </h2>
+            <ul className="bullets small">
+              <li>who&apos;s on the team.</li>
+              <li>at a high level, what your startup is about.</li>
+              <li>upload it to youtube as unlisted, then paste the link.</li>
+            </ul>
+            <p className="small">
+              not sure what it should look like?{" "}
+              <a className="text-link" href={EXAMPLE_VIDEOS_URL} target="_blank" rel="noopener noreferrer">
+                watch some example videos from YC founders
+              </a>
+              .
+            </p>
+            <Field
+              label="YouTube link"
+              placeholder="https://youtu.be/…"
+              inputMode="url"
+              hint="set the video to unlisted, not private, so we can watch it."
+              {...text("videoUrl")}
+            />
+          </section>
 
-          <section className="step" aria-labelledby="step-4">
-            <h2 className="step-title" id="step-4">
-              4. Pay the application fee: 2 hours™.
+          <TeamSection step={4} team={team} onTeam={setTeam} appUrl={appUrl} error={errors.team} />
+
+          <section className="step" aria-labelledby="step-5">
+            <h2 className="step-title" id="step-5">
+              5. Pay the application fee: 2 hours™.
             </h2>
             <p>we don&apos;t take money. we take time.</p>
             <Panel className="stack-sm">
@@ -186,6 +214,13 @@ export function ApplyForm({
               <li>at a high level, what your startup is about.</li>
               <li>upload it to youtube as unlisted, then paste the link.</li>
             </ul>
+            <p className="small">
+              not sure what it should look like?{" "}
+              <a className="text-link" href={EXAMPLE_VIDEOS_URL} target="_blank" rel="noopener noreferrer">
+                watch some example videos that got in
+              </a>
+              .
+            </p>
             <Field
               label="YouTube link"
               placeholder="https://youtu.be/…"

@@ -20,8 +20,9 @@ test("project path shows numbered steps, disclosures and only 2h+ projects", asy
   await expect(page.locator("h2.step-title")).toHaveText([
     "1. Pick a project you've built.",
     "2. Show us the project.",
-    "3. Bring your team.",
-    "4. Pay the application fee: 2 hours™.",
+    "3. Record a 1 minute video.",
+    "4. Bring your team.",
+    "5. Pay the application fee: 2 hours™.",
   ]);
   await expect(page.getByRole("radio")).toHaveCount(1);
   await expect(page.getByRole("radio", { name: /big-project/ })).toBeVisible();

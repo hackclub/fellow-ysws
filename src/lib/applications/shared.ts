@@ -27,6 +27,8 @@ export type ProjectContent = {
   playableUrl: string;
   description: string;
   heardFrom: string;
+  /** Absent on project applications submitted before the video was required. */
+  videoUrl?: string;
 };
 
 export type AidContent = {
@@ -107,6 +109,16 @@ const text = (label: string, max: number) =>
     .min(1, `add ${label}`)
     .max(max, `keep ${label} under ${max} characters`);
 
+const videoUrl = z
+  .string({ error: "add your video link" })
+  .trim()
+  .min(1, "add your video link")
+  .transform((v, ctx) => {
+    const yt = normalizeYouTubeUrl(v);
+    if (!yt) ctx.addIssue({ code: "custom", message: "use a youtube link, with the video set to unlisted" });
+    return yt ?? v;
+  });
+
 const projectSchema = z.object({
   kind: z.literal("project"),
   hackatimeProject: z.string({ error: "pick a hackatime project" }).trim().min(1, "pick a hackatime project"),
@@ -125,6 +137,7 @@ const projectSchema = z.object({
     .min(1, "add a playable url")
     .refine(isHttpUrl, "the playable url must be a link starting with http:// or https://"),
   description: text("a description", LIMITS.description),
+  videoUrl,
   heardFrom: text("how you heard about us", LIMITS.heardFrom),
 });
 
@@ -132,15 +145,7 @@ const mustAck = (msg: string) => z.literal(true, { error: msg });
 
 const aidSchema = z.object({
   kind: z.literal("aid"),
-  videoUrl: z
-    .string({ error: "add your video link" })
-    .trim()
-    .min(1, "add your video link")
-    .transform((v, ctx) => {
-      const yt = normalizeYouTubeUrl(v);
-      if (!yt) ctx.addIssue({ code: "custom", message: "use a youtube link, with the video set to unlisted" });
-      return yt ?? v;
-    }),
+  videoUrl,
   aidReason: text("why you're asking for aid", LIMITS.aidReason),
   heardFrom: text("how you heard about us", LIMITS.heardFrom),
   ackNewToHackClub: mustAck("confirm that aid is for people new to hack club"),
@@ -193,8 +198,9 @@ export function missingItems(input: ApplicationInput): string[] {
     if (blank(input.codeUrl)) out.push("a code url");
     if (blank(input.playableUrl)) out.push("a playable url");
     if (blank(input.description)) out.push("a description");
-  } else {
-    if (blank(input.videoUrl)) out.push("your video link");
+  }
+  if (blank(input.videoUrl)) out.push("your video link");
+  if (input.kind === "aid") {
     if (blank(input.aidReason)) out.push("why you're asking for aid");
   }
   if (blank(input.heardFrom)) out.push("how you heard about us");

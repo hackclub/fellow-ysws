@@ -182,6 +182,9 @@ describe("One financial-aid attempt per user", () => {
     const u = await makeUser();
     const priv = await submitApplication(u, { ...aidInput, videoUrl: "https://youtu.be/privateABCD" }, null);
     expect(priv).toMatchObject({ ok: false, errors: { videoUrl: /unlisted, not private/ } });
+    const builder = await userWithProjects();
+    const privProject = await submitApplication(builder, { ...projectInput, videoUrl: "https://youtu.be/privateABCD" }, TOKEN);
+    expect(privProject).toMatchObject({ ok: false, errors: { videoUrl: /unlisted, not private/ } });
     fake.youtubeDown = true;
     expect(await submitApplication(u, aidInput, null)).toMatchObject({ ok: false, errors: { videoUrl: /couldn't reach youtube/ } });
     expect(await db().select().from(aidClaims)).toHaveLength(0);

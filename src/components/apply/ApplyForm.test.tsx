@@ -14,7 +14,7 @@ describe("ApplyForm — still missing", () => {
     const submit = screen.getByRole("button", { name: "Pay 2 hours & submit" });
     expect(submit).toBeDisabled();
     expect(screen.getByTestId("still-missing")).toHaveTextContent(
-      "still missing: a hackatime project, a code url, a playable url, a description, how you heard about us.",
+      "still missing: a hackatime project, a code url, a playable url, a description, your video link, how you heard about us.",
     );
   });
 
@@ -22,9 +22,10 @@ describe("ApplyForm — still missing", () => {
     render(<ApplyForm projects={projects} aidAvailable />);
     await userEvent.click(screen.getByRole("radio", { name: /big-project/ }));
     await userEvent.type(screen.getByLabelText("Code URL"), "https://github.com/a/b");
-    expect(screen.getByTestId("still-missing")).toHaveTextContent("still missing: a playable url, a description, how you heard about us.");
+    expect(screen.getByTestId("still-missing")).toHaveTextContent("still missing: a playable url, a description, your video link, how you heard about us.");
     await userEvent.type(screen.getByLabelText("Playable URL"), "https://b.example.com");
     await userEvent.type(screen.getByLabelText("Description"), "a thing");
+    await userEvent.type(screen.getByLabelText("YouTube link"), "https://youtu.be/dQw4w9WgXcQ");
     await userEvent.type(screen.getByLabelText("How'd you hear about us?"), "slack");
     expect(screen.getByRole("button", { name: "Pay 2 hours & submit" })).toBeEnabled();
     expect(screen.queryByTestId("still-missing")).not.toBeInTheDocument();
