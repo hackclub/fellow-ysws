@@ -1,0 +1,28 @@
+# Local development and test databases.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fellows
+      POSTGRES_PASSWORD: fellows
+      POSTGRES_DB: fellows
+    ports: ["127.0.0.1:5442:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fellows"]
+      interval: 2s
+      retries: 30
+  db-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fellows
+      POSTGRES_PASSWORD: fellows
+      POSTGRES_DB: fellows_test
+    ports: ["127.0.0.1:5443:5432"]
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fellows"]
+      interval: 2s
+      retries: 30
+volumes:
+  db-data:

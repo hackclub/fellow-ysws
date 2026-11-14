@@ -1,0 +1,2 @@
+ALTER TABLE "applications" DROP CONSTRAINT "applications_only_malformed_superseded";--> statement-breakpoint
+ALTER TABLE "applications" ADD CONSTRAINT "applications_only_rejected_superseded" CHECK ("applications"."superseded_by_id" IS NULL OR "applications"."status" IN ('rejected_malformed', 'rejected_cut'));
