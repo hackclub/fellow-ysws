@@ -3,20 +3,20 @@ import type { AccordionEntry } from "@/components/Accordion";
 
 export const whyFellows = [
   "ten weeks is enough time to build something real.",
-  "they have nothing else to do but ship.",
-  "the last week is in san francisco, pitching real investors.",
+  "you'll be mentored, funded, and receive guidance in your respective field",
+  "the last week is in a fully funded trip to san francisco, pitching to real investors.",
 ];
 
 export const howItWorks = [
   {
     eyebrow: "To apply",
     title: "A project + 2 hours™",
-    body: "pick a project you've logged on hackatime, record a one minute video, and pay the fee in hours, not dollars. brand new to hack club? ask for aid instead of a project.",
+    body: "pick a project you've worked on in the past for at least two hours, record a one minute video, and apply with your project (minimum two hours). brand new to hack club? ask for aid instead of a project.",
   },
   {
     eyebrow: "Weeks 1–9",
     title: "Build from wherever you are",
-    body: "nine weeks online with your cohort. ship something every week.",
+    body: "nine weeks online with your cohort. mentorship, funding, and more",
   },
   {
     eyebrow: "Week 10",

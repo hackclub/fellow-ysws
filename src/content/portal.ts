@@ -37,7 +37,7 @@ export function letterBody(outcome: LetterOutcome, kind: "project" | "aid"): str
   return [
     `congratulations! i'm delighted to offer you a spot in FELLOWS FUND™.`,
     `${reviewed} out of a pile of applications made with real care, yours stood out.`,
-    "over the next ten weeks you'll ship something every week with your cohort online, then join us in san francisco for the final week in person.",
+    "over the next ten weeks you'll be mentored with your cohort online, then join us in san francisco for the final week in person.",
     "we'll reach out on slack soon with next steps, from onboarding to travel. keep an eye on your dms.",
     "welcome to FELLOWS FUND™. we're proud to back you, and we can't wait to see what you make.",
   ];
