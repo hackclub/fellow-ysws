@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { NavItem } from "./NavLinks";
+import { SiteFooter } from "./SiteFooter";
 import { SiteHeader } from "./SiteHeader";
 
 export function navItems(isAdmin: boolean): NavItem[] {
@@ -17,6 +18,7 @@ export function SiteShell({ isAdmin, children }: { isAdmin: boolean; children: R
     <>
       <SiteHeader items={navItems(isAdmin)} />
       {children}
+      <SiteFooter />
     </>
   );
 }
