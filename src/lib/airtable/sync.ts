@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { applications, CREDITED_SECONDS, users } from "@/db/schema";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
+import { assertAdmin } from "@/lib/auth/guards";
 import { piiBinding, type UserPii } from "@/lib/auth/session";
 import { justificationBinding, toView, type ApplicationView } from "@/lib/applications/service";
 import type { ProjectContent } from "@/lib/applications/shared";
@@ -40,6 +41,7 @@ const pending = and(
 );
 
 export async function countPendingSync(): Promise<number> {
+  await assertAdmin();
   const [{ n }] = await db().select({ n: sql<number>`count(*)::int` }).from(applications).where(pending);
   return n;
 }
@@ -51,6 +53,7 @@ export type SyncResult =
 type Candidate = { app: ApplicationView; pii: UserPii; hackatimeId: string | null; justification: string | null };
 
 export async function syncReviewsToAirtable(): Promise<SyncResult> {
+  await assertAdmin();
   const config = airtableConfig();
   if (!config) return { ok: false, reason: "not_configured" };
 

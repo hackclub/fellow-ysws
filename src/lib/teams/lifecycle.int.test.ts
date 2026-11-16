@@ -2,11 +2,10 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb, db } from "@/db";
 import { aidClaims, applicationMembers, applications, teams } from "@/db/schema";
-import type { CurrentUser } from "@/lib/auth/session";
 import { hcIdHash } from "@/lib/crypto";
 import { jar } from "../../../test/cookie-jar";
 import { resetDb } from "../../../test/db";
-import { aidInput, makeUser, projectInput } from "../../../test/factories";
+import { aidInput, makeUser, projectInput, signInAsAdmin } from "../../../test/factories";
 import { fake, installFakeProviders } from "../../../test/fake-providers";
 
 vi.mock("next/headers", async () => (await import("../../../test/cookie-jar")).nextHeadersMock());
@@ -55,10 +54,8 @@ async function submitAs(founder: U & { token: string }, input = projectInput) {
   return r.id;
 }
 
-async function adminUser(): Promise<CurrentUser> {
-  const a = await makeUser("ident!admin1");
-  return { ...a, isAdmin: true, name: "admin", email: null, slackId: null, hackatimeConnectedAt: null };
-}
+/** Admin calls read the session, so sign the allowlisted admin in on the test cookie jar. */
+const adminUser = signInAsAdmin;
 
 const membersOf = async (appId: string) =>
   (await db().select().from(applicationMembers).where(eq(applicationMembers.applicationId, appId)))
@@ -134,12 +131,12 @@ describe("Fee and aid unaffected by team size", () => {
   });
 
   it("uses up only the founder's aid attempt", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners } = await teamOf(2);
     const appId = await submitAs(founder, aidInput);
     const claims = (await db().select().from(aidClaims)).map((c) => c.hcIdHash);
     expect(claims).toEqual([hcIdHash(founder.hcId)]);
-    await decide(admin, appId, "reject_cut", "not this time", "too thin");
+    await decide(appId, "reject_cut", "not this time", "too thin");
     const state = await getApplicantState(partners[0]);
     expect(state.aidAvailable).toBe(true);
     const p = partners[0] as U & { token: string };
@@ -149,10 +146,10 @@ describe("Fee and aid unaffected by team size", () => {
 
 describe("Team reopens on Needs changes", () => {
   it("lets the founder change the team, and the resubmission records the new team", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners, teamId } = await teamOf(2);
     const first = await submitAs(founder);
-    await decide(admin, first, "reject_malformed", "who is on this team?");
+    await decide(first, "reject_malformed", "who is on this team?");
 
     const [team] = await db().select().from(teams).where(eq(teams.id, teamId));
     expect(team.lockedAt).toBeNull();
@@ -179,10 +176,10 @@ describe("Team reopens on Needs changes", () => {
 
 describe("Partners are released", () => {
   it.each(["approve", "reject_cut"] as const)("after %s, every partner can apply on their own", async (decision) => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners } = await teamOf(2);
     const appId = await submitAs(founder);
-    await decide(admin, appId, decision, decision === "approve" ? "" : "not this time", "reviewed");
+    await decide(appId, decision, decision === "approve" ? "" : "not this time", "reviewed");
     for (const p of partners) {
       expect(await t.getMyTeam(p.id)).toBeNull();
       const pp = p as U & { token: string };
@@ -214,10 +211,10 @@ describe("Deleting a pending team application", () => {
   });
 
   it("reopens the team when the deleted application was a resubmission", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners, teamId } = await teamOf(1);
     const first = await submitAs(founder);
-    await decide(admin, first, "reject_malformed", "fix it");
+    await decide(first, "reject_malformed", "fix it");
     await submitAs(founder);
     expect(await deleteApplication(founder)).toEqual({ ok: true });
     const [team] = await db().select().from(teams).where(eq(teams.id, teamId));
@@ -230,6 +227,7 @@ describe("Application detail view (admin)", () => {
   it("lists the submitted team with the founder marked", async () => {
     const { founder, partners } = await teamOf(2);
     const appId = await submitAs(founder);
+    await adminUser();
     const d = await getApplicationDetail(appId);
     expect(d?.members[appId]).toEqual([
       { userId: founder.id, role: "founder", name: `Name ${founder.hcId}` },
@@ -240,10 +238,10 @@ describe("Application detail view (admin)", () => {
   });
 
   it("keeps each version's team across a resubmission", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners } = await teamOf(2);
     const first = await submitAs(founder);
-    await decide(admin, first, "reject_malformed", "who is on this team?");
+    await decide(first, "reject_malformed", "who is on this team?");
     await t.kickPartner(founder, partners[0].id);
     const second = await submitAs(founder);
     const d = await getApplicationDetail(second);
@@ -255,10 +253,10 @@ describe("Application detail view (admin)", () => {
 
 describe("Fraud bans and teams", () => {
   it("releases partners, and the banned founder can't form or join a team", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder, partners } = await teamOf(1);
     const appId = await submitAs(founder);
-    await decide(admin, appId, "reject_fraud", "", "faked hours");
+    await decide(appId, "reject_fraud", "", "faked hours");
     expect(await t.getMyTeam(partners[0].id)).toBeNull();
     expect(await t.formTeam(founder)).toEqual({ ok: false, reason: "has_application" });
 
@@ -269,10 +267,10 @@ describe("Fraud bans and teams", () => {
   });
 
   it("lets a founder whose application was cut form a new team", async () => {
-    const admin = await adminUser();
+    await adminUser();
     const { founder } = await teamOf(1);
     const appId = await submitAs(founder);
-    await decide(admin, appId, "reject_cut", "not this time", "too thin");
+    await decide(appId, "reject_cut", "not this time", "too thin");
     expect((await t.formTeam(founder)).ok).toBe(true);
   });
 });

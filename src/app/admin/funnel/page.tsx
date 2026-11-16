@@ -1,9 +1,11 @@
 import { funnelReport, parseRange, STEP_LABEL } from "@/lib/admin/funnel";
 import { ADMIN_LABEL, type ApplicationStatus } from "@/lib/applications/shared";
+import { requireAdmin } from "@/lib/auth/guards";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default async function FunnelPage({ searchParams }: PageProps<"/admin/funnel">) {
+  await requireAdmin("/admin/funnel");
   const { from, to } = parseRange(await searchParams);
   const report = await funnelReport(from, to);
   const max = Math.max(1, ...report.steps.map((s) => s.people));

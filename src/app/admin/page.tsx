@@ -2,11 +2,13 @@ import Link from "next/link";
 import { AirtableSync } from "@/components/admin/AirtableSync";
 import { listApplications, parseFilter } from "@/lib/admin/service";
 import { airtableConfig, countPendingSync } from "@/lib/airtable/sync";
+import { requireAdmin } from "@/lib/auth/guards";
 import { ADMIN_LABEL } from "@/lib/applications/shared";
 
 const fmt = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 export default async function AdminList({ searchParams }: PageProps<"/admin">) {
+  await requireAdmin("/admin");
   const filter = parseFilter(await searchParams);
   const [rows, waiting] = await Promise.all([listApplications(filter), countPendingSync()]);
   return (

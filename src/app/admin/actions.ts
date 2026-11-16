@@ -15,11 +15,11 @@ const MESSAGES = {
 } as const;
 
 export async function decideAction(_prev: DecideState, form: FormData): Promise<DecideState> {
-  const admin = await requireAdminForAction();
+  await requireAdminForAction();
   const id = String(form.get("id") ?? "");
   const decision = String(form.get("decision") ?? "") as Decision;
   if (!["approve", "reject_cut", "reject_malformed", "reject_fraud"].includes(decision)) return { error: "pick a decision" };
-  const result = await decide(admin, id, decision, String(form.get("note") ?? ""), String(form.get("justification") ?? ""));
+  const result = await decide(id, decision, String(form.get("note") ?? ""), String(form.get("justification") ?? ""));
   if (!result.ok) return { error: MESSAGES[result.error] };
   revalidatePath(`/admin/applications/${id}`);
   revalidatePath("/admin");

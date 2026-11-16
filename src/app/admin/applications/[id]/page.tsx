@@ -7,11 +7,13 @@ import { TeamMembers } from "@/components/submissions/TeamMembers";
 import { getApplicationDetail } from "@/lib/admin/service";
 import { airtableRecordUrl } from "@/lib/airtable/sync";
 import { ADMIN_LABEL } from "@/lib/applications/shared";
+import { requireAdmin } from "@/lib/auth/guards";
 
 const fmt = (d: Date) => d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
 export default async function AdminApplication({ params }: PageProps<"/admin/applications/[id]">) {
   const { id } = await params;
+  await requireAdmin(`/admin/applications/${id}`);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const detail = await getApplicationDetail(id);
   if (!detail) notFound();
