@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, users } from "@/db/schema";
 import { encrypt, hcIdHash } from "@/lib/crypto";
-import { piiBinding } from "@/lib/auth/session";
+import { createSession, loadUser, piiBinding } from "@/lib/auth/session";
 import type { ApplicationInput, ApplicationStatus } from "@/lib/applications/shared";
 import { noteBinding } from "@/lib/applications/service";
 
@@ -13,6 +13,13 @@ export async function makeUser(hcId = `ident!${randomUUID().slice(0, 8)}`) {
     .insert(users)
     .values({ id, hcIdHash: hcIdHash(hcId), piiEnc: encrypt({ hcId, name: `Name ${hcId}`, email: `${hcId}@x.dev`, slackId: null }, piiBinding(id)) });
   return { id, hcId };
+}
+
+/** Creates the allowlisted admin (test/setup-env.ts) and signs them in on the test cookie jar. */
+export async function signInAsAdmin() {
+  const { id } = await makeUser("ident!admin1");
+  await createSession(id);
+  return (await loadUser(id))!;
 }
 
 export const projectInput: ApplicationInput = {

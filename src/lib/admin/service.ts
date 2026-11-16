@@ -5,7 +5,8 @@ import { applications, programBans, users } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { userHackatimeIdBinding } from "@/lib/hackatime";
-import { piiBinding, type CurrentUser, type UserPii } from "@/lib/auth/session";
+import { assertAdmin } from "@/lib/auth/guards";
+import { piiBinding, type UserPii } from "@/lib/auth/session";
 import {
   justificationBinding,
   noteBinding,
@@ -46,6 +47,7 @@ function piiOf(row: { id: string; piiEnc: string }): UserPii {
 
 /** Live applications (superseded ones appear only as history on their replacement). */
 export async function listApplications(filter: ListFilter): Promise<ListRow[]> {
+  await assertAdmin();
   const where: SQL[] = [isNull(applications.supersededById)];
   if (filter.kind) where.push(eq(applications.kind, filter.kind));
   if (filter.status) where.push(eq(applications.status, filter.status));
@@ -97,6 +99,7 @@ export type ApplicationDetail = {
 };
 
 export async function getApplicationDetail(id: string): Promise<ApplicationDetail | null> {
+  await assertAdmin();
   const row = await db().query.applications.findFirst({ where: eq(applications.id, id) });
   if (!row) return null;
   const applicant = await db().query.users.findFirst({ where: eq(users.id, row.userId) });
@@ -151,15 +154,15 @@ export const DECISION_RULES: Record<Decision, { note: "required" | "optional" | 
 /**
  * Decides a pending application; decisions are final. A fraud rejection also bans the applicant
  * from the program. Approved and cut decisions are what the Airtable sync picks up.
+ * The deciding admin is always the signed-in user of the current request.
  */
 export async function decide(
-  admin: CurrentUser,
   id: string,
   decision: Decision,
   note: string,
   justification = "",
 ): Promise<DecideResult> {
-  if (!admin.isAdmin) throw new Error("decide() requires an admin");
+  const admin = await assertAdmin();
   const rules = DECISION_RULES[decision];
   const trimmed = rules.note === "none" ? "" : note.trim();
   const why = rules.justification ? justification.trim() : "";

@@ -1,4 +1,5 @@
 import "server-only";
+import { assertAdmin } from "@/lib/auth/guards";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 
@@ -29,6 +30,7 @@ const pct = (n: number, d: number) => (d === 0 ? null : Math.round((n / d) * 100
  * otherwise their anonymous id (earlier anonymous events are linked on sign-in).
  */
 export async function funnelReport(from: Date, to: Date): Promise<FunnelReport> {
+  await assertAdmin();
   const person = sql`COALESCE(user_id::text, anon_id)`;
   const range = sql`created_at >= ${from.toISOString()} AND created_at < ${to.toISOString()}`;
 

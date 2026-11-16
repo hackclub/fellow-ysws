@@ -4,7 +4,7 @@ import { closeDb, db } from "@/db";
 import { funnelEvents } from "@/db/schema";
 import { jar, requestHeaders } from "../../../test/cookie-jar";
 import { resetDb } from "../../../test/db";
-import { makeUser } from "../../../test/factories";
+import { makeUser, signInAsAdmin } from "../../../test/factories";
 import { fake, installFakeProviders } from "../../../test/fake-providers";
 
 vi.mock("next/headers", async () => (await import("../../../test/cookie-jar")).nextHeadersMock());
@@ -61,6 +61,7 @@ describe("sign-in linking", () => {
     const ht = new URL(await flows.startHackatime());
     await flows.finishHackatime(new URLSearchParams({ code: fake.approve({ sub: "ident!c" }), state: ht.searchParams.get("state")! }));
 
+    await signInAsAdmin();
     const r = await funnelReport(new Date(Date.now() - 86_400_000), new Date(Date.now() + 86_400_000));
     expect(r.steps.slice(0, 3).map((s) => [s.step, s.people])).toEqual([
       ["visit", 1],
@@ -97,6 +98,7 @@ describe("funnel report", () => {
       ev("visit", { anonId: "late" }, undefined, new Date("2026-12-01T00:00:00Z")),
     ]);
     const { from, to } = parseRange({ from: "2026-11-01", to: "2026-11-05" });
+    await signInAsAdmin();
     const r = await funnelReport(from, to);
     expect(r.steps.map((s) => [s.step, s.people, s.fromPrevious])).toEqual([
       ["visit", 4, null],
