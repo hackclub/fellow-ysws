@@ -36,6 +36,13 @@
       "when": 1794559425048,
       "tag": "0004_fraud_bans_airtable",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794837420744,
+      "tag": "0005_per_applicant_fee",
+      "breakpoints": true
     }
   ]
 }

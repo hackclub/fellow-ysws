@@ -4,7 +4,7 @@ import { startTransition, useActionState, useEffect, useState } from "react";
 import { formStartedAction, submitAction, type SubmitState } from "@/app/apply/actions";
 import { Button, Checkbox, Field, Panel, TextArea } from "@/components/ui";
 import { missingItems, type ApplicationInput } from "@/lib/applications/shared";
-import { formatHours } from "@/lib/hackatime-shared";
+import { coversFee, feeSeconds, formatHours } from "@/lib/hackatime-shared";
 import type { TeamView } from "@/lib/teams/service";
 import { ProjectPicker, type ProjectsState } from "./ProjectPicker";
 import { TeamSection } from "./TeamSection";
@@ -57,10 +57,16 @@ export function ApplyForm({
     if (started) void formStartedAction();
   }, [started]);
 
+  // The fee is 2 hours per person on the team, founder included; only the founder pays it.
+  const teamSize = team?.members.length ?? 1;
+  const feeHours = feeSeconds(teamSize) / 3600;
+  const selected = projects.status === "ok" ? projects.projects.find((p) => p.name === v.hackatimeProject) : undefined;
+  // A project that stops covering the fee when the team grows is deselected, so it shows up as missing.
+  if (selected && !coversFee(selected, teamSize)) setV((prev) => ({ ...prev, hackatimeProject: "" }));
+
   const errors = state?.errors ?? {};
   const kind = aid ? "aid" : "project";
   const missing = missingItems({ kind, ...v });
-  const selected = projects.status === "ok" ? projects.projects.find((p) => p.name === v.hackatimeProject) : undefined;
 
   const touch = () => setStarted(true);
   const set = <K extends keyof Values>(key: K) => (value: Values[K]) => {
@@ -128,13 +134,18 @@ export function ApplyForm({
             </h2>
             <ul className="bullets small">
               <li>it doesn&apos;t have to be your startup. anything you&apos;ve shipped counts.</li>
-              <li>we only list hackatime projects with at least 2 hours logged.</li>
+              <li>we list hackatime projects with at least 2 hours logged.</li>
+              <li>
+                the project pays 2 hours for each person on your team, so it needs at least {feeHours} hours
+                {teamSize > 1 ? ` for a team of ${teamSize}` : ""}.
+              </li>
             </ul>
             <ProjectPicker
               state={projects}
               value={v.hackatimeProject}
               onChange={set("hackatimeProject")}
               error={errors.hackatimeProject}
+              teamSize={teamSize}
             />
           </section>
 
@@ -183,14 +194,19 @@ export function ApplyForm({
 
           <section className="step" aria-labelledby="step-5">
             <h2 className="step-title" id="step-5">
-              5. Pay the application fee: 2 hours™.
+              5. Pay the application fee: {feeHours} hours™.
             </h2>
             <p>we don&apos;t take money. we take time.</p>
             <Panel className="stack-sm">
               <div className="panel-row">
                 <span>Application fee</span>
-                <span>2 hours</span>
+                <span>{feeHours} hours</span>
               </div>
+              <p className="small muted">
+                {teamSize > 1
+                  ? `2 hours × ${teamSize} people. only you pay; partners don't.`
+                  : "2 hours for you. each partner you add adds 2 hours, and you pay for them."}
+              </p>
               <p className="small muted">
                 {selected
                   ? `charged against ${selected.name} (${formatHours(selected.totalSeconds)} logged).`
@@ -198,7 +214,7 @@ export function ApplyForm({
               </p>
             </Panel>
             <ul className="bullets small">
-              <li>fellows fund™ only takes 2 hours of credit from your project, not the full amount.</li>
+              <li>fellows fund™ only takes {feeHours} hours of credit from your project, not the full amount.</li>
               <li>the rest of that project&apos;s hours are still yours to reship to another program.</li>
             </ul>
           </section>
@@ -270,7 +286,7 @@ export function ApplyForm({
           </p>
         )}
         <Button type="submit" disabled={missing.length > 0 || pending}>
-          {pending ? "Submitting…" : aid ? "Submit application" : "Pay 2 hours & submit"}
+          {pending ? "Submitting…" : aid ? "Submit application" : `Pay ${feeHours} hours & submit`}
         </Button>
         {missing.length > 0 && (
           <p className="small muted" data-testid="still-missing">

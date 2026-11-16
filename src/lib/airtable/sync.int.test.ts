@@ -11,6 +11,7 @@ vi.mock("next/headers", async () => (await import("../../../test/cookie-jar")).n
 const { decide } = await import("@/lib/admin/service");
 const { submitApplication } = await import("@/lib/applications/service");
 const { countPendingSync, syncReviewsToAirtable } = await import("./sync");
+const teams = await import("@/lib/teams/service");
 
 beforeEach(async () => {
   await resetDb();
@@ -69,6 +70,25 @@ describe("syncReviewsToAirtable", () => {
     expect(await countPendingSync()).toBe(0);
     expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
     expect(fake.airtable).toHaveLength(2);
+  });
+
+  it("sends each application's own credited hours", async () => {
+    await admin();
+    const founder = await makeUser();
+    fake.tokens.set(`t-${founder.id}`, { sub: founder.hcId });
+    fake.projects.set(founder.hcId, [{ name: "big-project", total_seconds: 9 * 3600 }]);
+    const formed = await teams.formTeam(founder);
+    if (!formed.ok) throw new Error("setup");
+    for (let i = 0; i < 2; i++) {
+      if (!(await teams.joinTeam(await makeUser(), formed.team.inviteToken!)).ok) throw new Error("setup");
+    }
+    const version = (await teams.getMyTeam(founder.id))!.team.version;
+    const r = await submitApplication(founder, projectInput, `t-${founder.id}`, version);
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    await decide(r.id, "approve", "", "solid team");
+
+    expect(await syncReviewsToAirtable()).toMatchObject({ ok: true, synced: 1 });
+    expect(fake.airtable[0].fields).toMatchObject({ "Optional - Override Hours Spent": 6 });
   });
 
   it("leaves reviews waiting when Airtable refuses them", async () => {

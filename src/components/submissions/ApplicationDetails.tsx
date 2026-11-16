@@ -18,7 +18,8 @@ export function ApplicationDetails({ app }: { app: ApplicationView }) {
           {app.hackatimeSecondsSnapshot != null && (
             <span className="muted">
               {" "}
-              — {formatHours(app.hackatimeSecondsSnapshot)} logged, 2h credited
+              — {formatHours(app.hackatimeSecondsSnapshot)} logged
+              {app.creditedSeconds != null && `, ${formatHours(app.creditedSeconds)} credited`}
             </span>
           )}
         </dd>

@@ -89,6 +89,27 @@ describe("database constraints", () => {
     ).toBe("applications_hours_match_kind");
   });
 
+  it("accepts a fee that is a multiple of 2 hours and covered by the snapshot", async () => {
+    // 2h (the old flat fee) and 8h (a team of 4) both pass.
+    await db().insert(applications).values(projectApp(await makeUser()));
+    await db()
+      .insert(applications)
+      .values({ ...projectApp(await makeUser()), hackatimeSecondsSnapshot: 8 * 3600, creditedSeconds: 8 * 3600 });
+  });
+
+  it("refuses a fee that isn't a multiple of 2 hours or exceeds the snapshot", async () => {
+    expect(
+      await constraintOf(db().insert(applications).values({ ...projectApp(await makeUser()), creditedSeconds: 3 * 3600 })),
+    ).toBe("applications_hours_match_kind");
+    expect(
+      await constraintOf(
+        db()
+          .insert(applications)
+          .values({ ...projectApp(await makeUser()), hackatimeSecondsSnapshot: 5 * 3600, creditedSeconds: 6 * 3600 }),
+      ),
+    ).toBe("applications_hours_match_kind");
+  });
+
   it("allows a person to be active on only one team", async () => {
     const founderA = await makeUser();
     const founderB = await makeUser();

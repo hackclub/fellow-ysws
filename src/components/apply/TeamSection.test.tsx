@@ -42,7 +42,7 @@ describe("Team section contents", () => {
   it("offers to add partners when there's no team, and sends no team version", async () => {
     render(<Harness initial={null} />);
     expect(screen.getByRole("heading", { name: "3. Bring your team." })).toBeInTheDocument();
-    expect(screen.getByText(/partners don't pay hours/)).toBeInTheDocument();
+    expect(screen.getByText(/each person on the team adds 2 hours to the project fee. partners don't pay hours; only you do./)).toBeInTheDocument();
     expect(new FormData(screen.getByTestId("form") as HTMLFormElement).get("teamVersion")).toBe("");
 
     actions.formTeamAction.mockResolvedValue({ team: team({ members: [team().members[0]], partnerSpotsLeft: 3 }) });

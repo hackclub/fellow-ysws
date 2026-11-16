@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { applications, CREDITED_SECONDS, users } from "@/db/schema";
+import { applications, users } from "@/db/schema";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { assertAdmin } from "@/lib/auth/guards";
@@ -96,7 +96,7 @@ export async function syncReviewsToAirtable(): Promise<SyncResult> {
             pii: c.pii,
             hackatimeId: c.hackatimeId,
             loggedSeconds: c.app.hackatimeSecondsSnapshot ?? 0,
-            cappedSeconds: CREDITED_SECONDS,
+            cappedSeconds: c.app.creditedSeconds ?? 0,
             submittedAt: c.app.createdAt,
             justification: c.justification,
           }),

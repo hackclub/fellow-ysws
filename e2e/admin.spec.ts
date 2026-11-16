@@ -35,7 +35,7 @@ test("admin detail view shows full aid and project applications", async ({ page 
 
   await page.goto("/admin?kind=project");
   await page.getByRole("link", { name: "Test ident!e2e-proj" }).click();
-  await expect(page.getByRole("definition").filter({ hasText: "big-project — 5h 10m logged, 2h credited" })).toBeVisible();
+  await expect(page.getByRole("definition").filter({ hasText: "big-project — 5h 10m logged, 2h 00m credited" })).toBeVisible();
   await expect(page.getByRole("link", { name: "https://github.com/orpheus/big-project" })).toBeVisible();
   await expect(page.getByRole("link", { name: "https://big-project.example.com" })).toBeVisible();
 });

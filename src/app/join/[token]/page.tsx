@@ -33,7 +33,7 @@ export default async function JoinPage({ params }: PageProps<"/join/[token]">) {
               left.
             </p>
             <ul className="bullets small">
-              <li>partners don&apos;t pay hours. the founder covers the 2 hour fee.</li>
+              <li>partners don&apos;t pay hours. joining adds 2 hours to the fee {check.founderName} pays from their project (2 hours per person on the team).</li>
               <li>you&apos;ll see the application&apos;s status and any note from the reviewers.</li>
               <li>
                 while you&apos;re on this team you can&apos;t apply on your own or join another team. you&apos;re free again

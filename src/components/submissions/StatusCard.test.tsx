@@ -66,7 +66,12 @@ describe("StatusCard", () => {
 
   it("shows logged and credited hours for project applications", () => {
     render(<StatusCard app={base} />);
-    expect(screen.getByText(/2h 30m logged, 2h credited/)).toBeInTheDocument();
+    expect(screen.getByText(/2h 30m logged, 2h 00m credited/)).toBeInTheDocument();
+  });
+
+  it("shows a team-sized fee as credited", () => {
+    render(<StatusCard app={{ ...base, hackatimeSecondsSnapshot: 14 * 3600, creditedSeconds: 6 * 3600 }} />);
+    expect(screen.getByText(/14h 00m logged, 6h 00m credited/)).toBeInTheDocument();
   });
 });
 

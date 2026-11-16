@@ -55,7 +55,7 @@ export function TeamSection({
       <input type="hidden" name="teamVersion" value={team ? String(team.version) : ""} />
       <ul className="bullets small">
         <li>add up to {PARTNER_SPOTS} partners. they sign in with hack club through your invite link.</li>
-        <li>partners don&apos;t pay hours. the 2 hour fee is only ever charged to you.</li>
+        <li>each person on the team adds 2 hours to the project fee. partners don&apos;t pay hours; only you do.</li>
         <li>your team locks when you submit. applying solo? skip this step.</li>
       </ul>
 

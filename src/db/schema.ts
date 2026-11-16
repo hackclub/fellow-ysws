@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { SECONDS_PER_APPLICANT } from "../lib/hackatime-shared";
 import {
   bigserial,
   check,
@@ -50,7 +51,8 @@ export const applicationStatus = pgEnum("application_status", [
   "rejected_fraud",
 ]);
 
-export const CREDITED_SECONDS = 2 * 60 * 60;
+/** One person's share of the fee. A project application credits a positive multiple of it. */
+export const CREDITED_SECONDS = SECONDS_PER_APPLICANT;
 
 /** Founder plus up to 3 partners. */
 export const TEAM_MAX_MEMBERS = 4;
@@ -147,7 +149,7 @@ export const applications = pgTable(
     ),
     check(
       "applications_hours_match_kind",
-      sql`(${t.kind} = 'project' AND ${t.hackatimeSecondsSnapshot} >= ${sql.raw(String(CREDITED_SECONDS))} AND ${t.creditedSeconds} = ${sql.raw(String(CREDITED_SECONDS))})
+      sql`(${t.kind} = 'project' AND ${t.creditedSeconds} >= ${sql.raw(String(CREDITED_SECONDS))} AND ${t.creditedSeconds} % ${sql.raw(String(CREDITED_SECONDS))} = 0 AND ${t.hackatimeSecondsSnapshot} >= ${t.creditedSeconds})
         OR (${t.kind} = 'aid' AND ${t.hackatimeSecondsSnapshot} IS NULL AND ${t.creditedSeconds} IS NULL)`,
     ),
     check(

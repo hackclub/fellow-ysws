@@ -18,6 +18,44 @@ describe("ProjectPicker", () => {
     expect(onChange).toHaveBeenCalledWith("big-project");
   });
 
+  it("greys out projects below the team's fee and says how much they need", async () => {
+    const onChange = vi.fn();
+    render(
+      <ProjectPicker
+        state={{
+          status: "ok",
+          projects: [
+            { name: "rocket-sim", totalSeconds: 14 * 3600 + 1200 },
+            { name: "tiny-compiler", totalSeconds: 4 * 3600 + 1800 },
+          ],
+        }}
+        value=""
+        onChange={onChange}
+        teamSize={3}
+      />,
+    );
+    const short = screen.getByRole("radio", { name: /tiny-compiler/ });
+    expect(short).toBeDisabled();
+    expect(short).toHaveAccessibleDescription("needs 6h for a team of 3");
+    expect(screen.getByRole("radio", { name: /rocket-sim/ })).toBeEnabled();
+    await userEvent.click(short);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("says when no project covers the team's fee", () => {
+    render(
+      <ProjectPicker
+        state={{ status: "ok", projects: [{ name: "tiny-compiler", totalSeconds: 4 * 3600 }] }}
+        value=""
+        onChange={() => {}}
+        teamSize={4}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("none of your projects cover 8h yet. keep building, or remove a partner.");
+    expect(screen.getByRole("radio", { name: /tiny-compiler/ })).toBeDisabled();
+  });
+
   it("explains the empty state and points at financial aid", () => {
     render(<ProjectPicker state={{ status: "ok", projects: [] }} value="" onChange={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent(/none of your hackatime projects have 2 hours/);

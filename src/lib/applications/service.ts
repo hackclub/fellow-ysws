@@ -2,13 +2,14 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, type Db } from "@/db";
-import { aidClaims, applications, CREDITED_SECONDS, programBans, users } from "@/db/schema";
+import { aidClaims, applications, programBans, users } from "@/db/schema";
 import { decrypt, encrypt, hcIdHash } from "@/lib/crypto";
 import { recordFunnelEvent } from "@/lib/funnel";
 import { lockUser, type Tx } from "@/lib/locks";
 import { isTiedPartner, lockForApplication, onPendingDelete, teamForSubmit } from "@/lib/teams/service";
 import {
   eligibleProjects,
+  feeSeconds,
   fetchHackatimeId,
   fetchProjects,
   HackatimeUnavailableError,
@@ -187,6 +188,17 @@ export async function submitApplication(
         errors: { team: "your team changed since you opened this page. check who's on it, then submit again" },
       } as SubmitResult;
     }
+    // The fee is 2 hours per person on the team as locked here, paid from the founder's project alone.
+    const fee = kind === "project" ? feeSeconds(team.members.length) : null;
+    if (fee !== null && snapshot !== null && snapshot < fee) {
+      const people = team.members.length;
+      return {
+        ok: false,
+        errors: {
+          hackatimeProject: `that project needs ${fee / 3600}h for a team of ${people}. pick one with more time logged`,
+        },
+      } as SubmitResult;
+    }
     if (kind === "aid") await tx.insert(aidClaims).values({ hcIdHash: hash }).onConflictDoNothing();
     // The live-application index isn't deferrable: retire the old row (pointing at itself)
     // before inserting, then point it at its replacement.
@@ -198,7 +210,7 @@ export async function submitApplication(
       contentEnc: encrypt(content, contentBinding(id)),
       hackatimeSecondsSnapshot: snapshot,
       hackatimeIdEnc: hackatimeId ? encrypt(hackatimeId, hackatimeIdBinding(id)) : null,
-      creditedSeconds: kind === "project" ? CREDITED_SECONDS : null,
+      creditedSeconds: fee,
       teamId: team.teamId,
     });
     await lockForApplication(tx, id, team);

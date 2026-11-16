@@ -1,0 +1,3 @@
+ALTER TABLE "applications" DROP CONSTRAINT "applications_hours_match_kind";--> statement-breakpoint
+ALTER TABLE "applications" ADD CONSTRAINT "applications_hours_match_kind" CHECK (("applications"."kind" = 'project' AND "applications"."credited_seconds" >= 7200 AND "applications"."credited_seconds" % 7200 = 0 AND "applications"."hackatime_seconds_snapshot" >= "applications"."credited_seconds")
+        OR ("applications"."kind" = 'aid' AND "applications"."hackatime_seconds_snapshot" IS NULL AND "applications"."credited_seconds" IS NULL));

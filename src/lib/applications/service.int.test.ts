@@ -28,7 +28,7 @@ async function userWithProjects(projects = [{ name: "big-project", total_seconds
 }
 
 describe("project submissions", () => {
-  it("stores a snapshot of logged hours and credits exactly 2 hours", async () => {
+  it("stores a snapshot of logged hours and credits 2 hours for a solo founder", async () => {
     const u = await userWithProjects();
     const r = await submitApplication(u, projectInput, TOKEN);
     expect(r.ok).toBe(true);

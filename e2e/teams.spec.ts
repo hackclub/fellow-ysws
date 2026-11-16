@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { approveAs, connectHackatime, resetDb, signIn } from "./helpers";
+import { approveAs, connectHackatime, resetDb, setProjects, signIn } from "./helpers";
 
 test.beforeEach(resetDb);
 
@@ -21,6 +21,7 @@ async function join(page: Page, link: string, sub: string, founderSub: string) {
   await page.goto(link);
   await approveAs(page, sub);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Join Test ${founderSub}'s team.`);
+  await expect(page.getByText(/partners don't pay hours\. joining adds 2 hours to the fee/)).toBeVisible();
   await page.getByRole("button", { name: "Join the team" }).click();
   await expect(page).toHaveURL(/\/submissions\?joined=1/);
 }
@@ -138,7 +139,8 @@ test("full team journey: kick, submit, needs changes, re-team, resubmit, accept,
 
   await connectHackatime(founder, "ident!t-f4");
   await fillProject(founder);
-  await founder.getByRole("button", { name: "Pay 2 hours & submit" }).click();
+  // 2 people: 2 hours each, all paid from the founder's 5h10m project.
+  await founder.getByRole("button", { name: "Pay 4 hours & submit" }).click();
   await expect(founder).toHaveURL(/\/submissions\?submitted=1/);
   await expect(founder.getByTestId("team-members")).toContainText("Test ident!t-p4b");
 
@@ -166,13 +168,21 @@ test("full team journey: kick, submit, needs changes, re-team, resubmit, accept,
   await join(p3, newLink, "ident!t-p4c", "ident!t-f4");
   await founder.reload();
   await expect(members(founder)).toContainText("Test ident!t-p4c");
+  // 3 people make the fee 6 hours, more than the 5h10m project has logged.
+  const project = founder.getByRole("radio", { name: /big-project/ });
+  await expect(project).toBeDisabled();
+  await expect(project).toHaveAccessibleDescription("needs 6h for a team of 3");
+  await setProjects(founder, "ident!t-f4", [{ name: "big-project", total_seconds: 14 * 3600 }]);
+  await founder.reload();
   // Still connected to Hackatime from the first submission.
   await fillProject(founder);
-  await founder.getByRole("button", { name: "Pay 2 hours & submit" }).click();
+  await founder.getByRole("button", { name: "Pay 6 hours & submit" }).click();
   await expect(founder).toHaveURL(/\/submissions\?submitted=1/);
+  await expect(founder.getByText("14h 00m logged, 6h 00m credited")).toBeVisible();
 
   await decide(admin, "Test ident!t-f4", /^Approve/);
   await expect(admin.getByTestId("team-members").first()).toContainText("Test ident!t-p4c");
+  await expect(admin.getByText("14h 00m logged, 6h 00m credited")).toBeVisible();
 
   // Accepted: partners are released and can apply on their own.
   for (const p of [p2, p3]) {

@@ -122,12 +122,12 @@ describe("One live application per user (partners)", () => {
   });
 });
 
-describe("Fee and aid unaffected by team size", () => {
-  it("credits only the founder's project with 2 hours", async () => {
+describe("Fee and aid by team size", () => {
+  it("credits only the founder's project, with 2 hours per person", async () => {
     const { founder } = await teamOf(3);
     const appId = await submitAs(founder);
     const [app] = await db().select().from(applications).where(eq(applications.id, appId));
-    expect(app).toMatchObject({ userId: founder.id, creditedSeconds: 7200, hackatimeSecondsSnapshot: 14 * 3600 });
+    expect(app).toMatchObject({ userId: founder.id, creditedSeconds: 8 * 3600, hackatimeSecondsSnapshot: 14 * 3600 });
   });
 
   it("uses up only the founder's aid attempt", async () => {
@@ -275,3 +275,30 @@ describe("Fraud bans and teams", () => {
   });
 });
 
+
+describe("Fee of 2 hours per person", () => {
+  const credited = async (appId: string) =>
+    (await db().select().from(applications).where(eq(applications.id, appId)))[0];
+
+  it("credits 6 hours from the founder's project for a founder and 2 partners", async () => {
+    const { founder } = await teamOf(2);
+    fake.projects.set(founder.hcId, [{ name: "big-project", total_seconds: 14 * 3600 + 1800 }]);
+    const app = await credited(await submitAs(founder));
+    expect(app).toMatchObject({ hackatimeSecondsSnapshot: 52200, creditedSeconds: 6 * 3600 });
+  });
+
+  it("refuses a project below the team's fee without writing anything", async () => {
+    const { founder } = await teamOf(3);
+    fake.projects.set(founder.hcId, [{ name: "big-project", total_seconds: 7 * 3600 + 600 }]);
+    const r = await submitApplication(founder, projectInput, founder.token, await version(founder.id));
+    expect(r).toEqual({ ok: false, errors: { hackatimeProject: expect.stringMatching(/needs 8h for a team of 4/) } });
+    expect(await db().select().from(applications)).toHaveLength(0);
+    expect((await t.getMyTeam(founder.id))!.team.open).toBe(true);
+  });
+
+  it("charges no hours on the aid path, whatever the team size", async () => {
+    const { founder } = await teamOf(2);
+    const app = await credited(await submitAs(founder, aidInput));
+    expect(app).toMatchObject({ hackatimeSecondsSnapshot: null, creditedSeconds: null });
+  });
+});

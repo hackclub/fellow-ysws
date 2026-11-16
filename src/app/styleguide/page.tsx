@@ -36,10 +36,10 @@ export default async function Styleguide() {
         <Field label="Project name" placeholder="something short" />
         <Field label="Code URL" defaultValue="gitlab.com/x" error="must be a GitHub repository" />
         <TextArea label="The idea, in one sentence" placeholder="it's like… but for…" hint="keep it short." />
-        <Checkbox defaultChecked>charge 2 hours of logged time to this application.</Checkbox>
+        <Checkbox defaultChecked>charge 2 hours per person on the team to this application.</Checkbox>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
           <Button>Pay 2 hours &amp; submit</Button>
-          <Button disabled>Pay 2 hours &amp; submit</Button>
+          <Button disabled>Pay 6 hours &amp; submit</Button>
           <Button variant="quiet">Cancel</Button>
         </div>
         <p>
