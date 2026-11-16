@@ -24,8 +24,8 @@ test("landing page shows every section and leads to apply", async ({ page }) => 
   await expect(page).toHaveURL(/\/test-oauth\/hackclub\/oauth\/authorize/);
 });
 
-test("nav shows Apply, Submissions, FAQ and no Review for visitors", async ({ page }) => {
+test("nav shows Apply, Submissions, Docs, FAQ and no Review for visitors", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link")).toHaveText(["Apply", "Submissions", "FAQ"]);
+  await expect(nav.getByRole("link")).toHaveText(["Apply", "Submissions", "Docs", "FAQ"]);
 });

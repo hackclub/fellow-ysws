@@ -7,6 +7,7 @@ export function navItems(isAdmin: boolean): NavItem[] {
   const items: NavItem[] = [
     { href: "/apply", label: "Apply" },
     { href: "/submissions", label: "Submissions" },
+    { href: "/docs", label: "Docs" },
     { href: "/#faq", label: "FAQ" },
   ];
   if (isAdmin) items.push({ href: "/admin", label: "Review" });
