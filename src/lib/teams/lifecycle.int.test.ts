@@ -174,12 +174,30 @@ describe("Team reopens on Needs changes", () => {
   });
 });
 
+describe("Team stays locked through the interview", () => {
+  it("keeps everyone on the team until the round-two decision", async () => {
+    await adminUser();
+    const { founder, partners } = await teamOf(1);
+    const other = await teamOf(0);
+    const appId = await submitAs(founder);
+    await decide(appId, "approve", "", "first pass");
+    const p = partners[0] as U & { token: string };
+    expect(await t.leaveTeam(p)).toEqual({ ok: false, reason: "locked" });
+    expect((await t.joinTeam(p, other.token)).ok).toBe(false);
+    expect((await submitApplication(p, projectInput, p.token, null)).ok).toBe(false);
+    expect((await t.getMyTeam(p.id))?.role).toBe("partner");
+    await decide(appId, "select", "", "great call");
+    expect(await t.getMyTeam(p.id)).toBeNull();
+  });
+});
+
 describe("Partners are released", () => {
-  it.each(["approve", "reject_cut"] as const)("after %s, every partner can apply on their own", async (decision) => {
+  it.each(["select", "reject_cut"] as const)("after %s, every partner can apply on their own", async (decision) => {
     await adminUser();
     const { founder, partners } = await teamOf(2);
     const appId = await submitAs(founder);
-    await decide(appId, decision, decision === "approve" ? "" : "not this time", "reviewed");
+    if (decision === "select") await decide(appId, "approve", "", "first pass");
+    await decide(appId, decision, decision === "select" ? "" : "not this time", "reviewed");
     for (const p of partners) {
       expect(await t.getMyTeam(p.id)).toBeNull();
       const pp = p as U & { token: string };

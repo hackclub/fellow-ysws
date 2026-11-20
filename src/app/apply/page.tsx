@@ -1,25 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ApplyForm } from "@/components/apply/ApplyForm";
-import type { ProjectsState } from "@/components/apply/ProjectPicker";
 import { requireUser } from "@/lib/auth/guards";
 import { getApplicantState } from "@/lib/applications/service";
 import { env } from "@/lib/env";
-import { eligibleProjects, fetchProjects, HackatimeUnavailableError, readHackatimeToken } from "@/lib/hackatime";
+import { projectsStateFor } from "@/lib/hackatime-projects";
 import { getMyTeam } from "@/lib/teams/service";
 
 export const metadata = { title: "Apply — Hack Club Fellows Fund™" };
 
-async function projectsFor(userId: string, flag: string | undefined): Promise<ProjectsState> {
-  const token = await readHackatimeToken(userId);
-  if (!token) return { status: "not_connected", denied: flag === "denied", failed: flag === "failed" };
-  try {
-    return { status: "ok", projects: eligibleProjects(await fetchProjects(token)) };
-  } catch (e) {
-    if (!(e instanceof HackatimeUnavailableError)) throw e;
-    return { status: "error", message: e.message, reconnect: /reconnect/i.test(e.message) };
-  }
-}
 
 export default async function ApplyPage({ searchParams }: PageProps<"/apply">) {
   const user = await requireUser("/apply");
@@ -29,9 +18,9 @@ export default async function ApplyPage({ searchParams }: PageProps<"/apply">) {
   const state = await getApplicantState(user);
   if (!state.canSubmit) redirect("/submissions");
   const { hackatime } = await searchParams;
-  const projects = await projectsFor(user.id, typeof hackatime === "string" ? hackatime : undefined);
+  const projects = await projectsStateFor(user.id, typeof hackatime === "string" ? hackatime : undefined);
   const resubmitting = state.live?.status === "rejected_malformed";
-  const reapplying = state.live?.status === "rejected_cut";
+  const reapplying = state.live?.status === "rejected_cut" || state.live?.status === "rejected_fraud";
 
   return (
     <main className="container page">

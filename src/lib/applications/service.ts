@@ -11,6 +11,7 @@ import {
   eligibleProjects,
   feeSeconds,
   fetchHackatimeId,
+  SECONDS_PER_APPLICANT,
   fetchProjects,
   HackatimeUnavailableError,
   userHackatimeIdBinding,
@@ -29,6 +30,8 @@ import { checkYouTubeVideo } from "./youtube";
 export const contentBinding = (id: string) => ({ table: "applications", column: "content_enc", rowId: id });
 export const noteBinding = (id: string) => ({ table: "applications", column: "note_enc", rowId: id });
 export const justificationBinding = (id: string) => ({ table: "applications", column: "justification_enc", rowId: id });
+export const finalNoteBinding = (id: string) => ({ table: "applications", column: "final_note_enc", rowId: id });
+export const finalJustificationBinding = (id: string) => ({ table: "applications", column: "final_justification_enc", rowId: id });
 export const hackatimeIdBinding = (id: string) => ({ table: "applications", column: "hackatime_id_enc", rowId: id });
 
 export type Applicant = { id: string; hcId: string };
@@ -36,31 +39,41 @@ export type Applicant = { id: string; hcId: string };
 export type ApplicationView = {
   id: string;
   kind: ApplicationKind;
+  /** Who paid the fee: the founder for everyone, or each person from their own project. */
+  feeMode: "founder_pays" | "each_pays";
   status: ApplicationStatus;
   content: ApplicationContent;
+  /** The latest round's note to the applicant: round two's once it's decided, else the first pass's. */
   note: string | null;
   hackatimeSecondsSnapshot: number | null;
   /** Hackatime account id at submission; null for aid, or if Hackatime didn't return one. */
   hackatimeId: string | null;
   creditedSeconds: number | null;
   createdAt: Date;
+  /** When the latest round was decided. */
   decidedAt: Date | null;
+  /** Decided after a second-round interview. */
+  round2: boolean;
 };
 
 type Row = typeof applications.$inferSelect;
 
 export function toView(row: Row): ApplicationView {
+  const round2 = row.finalDecidedAt !== null;
+  const noteEnc = round2 ? row.finalNoteEnc : row.noteEnc;
   return {
     id: row.id,
     kind: row.kind,
+    feeMode: row.feeMode,
     status: row.status,
     content: decrypt<ApplicationContent>(row.contentEnc, contentBinding(row.id)),
-    note: row.noteEnc ? decrypt<string>(row.noteEnc, noteBinding(row.id)) : null,
+    note: noteEnc ? decrypt<string>(noteEnc, (round2 ? finalNoteBinding : noteBinding)(row.id)) : null,
     hackatimeSecondsSnapshot: row.hackatimeSecondsSnapshot,
     hackatimeId: row.hackatimeIdEnc ? decrypt<string>(row.hackatimeIdEnc, hackatimeIdBinding(row.id)) : null,
     creditedSeconds: row.creditedSeconds,
     createdAt: row.createdAt,
-    decidedAt: row.decidedAt,
+    decidedAt: round2 ? row.finalDecidedAt : row.decidedAt,
+    round2,
   };
 }
 
@@ -73,8 +86,12 @@ async function liveRow(userId: string, tx: Db | Tx = db()): Promise<Row | undefi
   return row;
 }
 
-/** A live application can be replaced by a new one after "Needs changes" or "didn't make the cut". */
-export const canReplace = (status: ApplicationStatus) => status === "rejected_malformed" || status === "rejected_cut";
+/**
+ * A live application can be replaced by a new one after "Needs changes", "didn't make the cut", or a
+ * fraud rejection that banned someone else on the team. Banned users are stopped separately.
+ */
+export const canReplace = (status: ApplicationStatus) =>
+  status === "rejected_malformed" || status === "rejected_cut" || status === "rejected_fraud";
 
 function aidAllowed(hasClaim: boolean, live: Pick<Row, "kind" | "status"> | undefined) {
   return !hasClaim || (live?.kind === "aid" && live.status === "rejected_malformed");
@@ -108,6 +125,11 @@ export async function getApplicantState(user: Applicant): Promise<ApplicantState
     aidAvailable: !banned && aidAllowed(!!claim, live),
     banned,
   };
+}
+
+/** "Ana", "Ana and Ben", "Ana, Ben and Cai". */
+function listNames(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 export type SubmitResult = { ok: true; id: string } | { ok: false; errors: FieldErrors };
@@ -188,16 +210,41 @@ export async function submitApplication(
         errors: { team: "your team changed since you opened this page. check who's on it, then submit again" },
       } as SubmitResult;
     }
-    // The fee is 2 hours per person on the team as locked here, paid from the founder's project alone.
-    const fee = kind === "project" ? feeSeconds(team.members.length) : null;
-    if (fee !== null && snapshot !== null && snapshot < fee) {
-      const people = team.members.length;
-      return {
-        ok: false,
-        errors: {
-          hackatimeProject: `that project needs ${fee / 3600}h for a team of ${people}. pick one with more time logged`,
-        },
-      } as SubmitResult;
+    // Who pays only matters on the project path; aid applications are always recorded as founder_pays.
+    const feeMode = kind === "project" ? team.feeMode : "founder_pays";
+    let fee: number | null = null;
+    if (kind === "project" && feeMode === "each_pays") {
+      // Each person pays 2 hours from their own project, saved by each partner in their own session.
+      const partners = team.members.filter((m) => m.role === "partner");
+      const waiting = partners.filter((m) => !m.project).map((m) => m.name);
+      if (waiting.length) {
+        return {
+          ok: false,
+          errors: { team: `${listNames(waiting)} ${waiting.length === 1 ? "hasn't" : "haven't"} added their project yet` },
+        } as SubmitResult;
+      }
+      const ids = [hackatimeId, ...partners.map((m) => m.project!.hackatimeId)];
+      if (!hackatimeId || new Set(ids).size !== ids.length) {
+        return {
+          ok: false,
+          errors: {
+            hackatimeProject: "each person needs their own hackatime account. two people on your team used the same one",
+          },
+        } as SubmitResult;
+      }
+      fee = SECONDS_PER_APPLICANT;
+    } else if (kind === "project") {
+      // The fee is 2 hours per person on the team as locked here, paid from the founder's project alone.
+      fee = feeSeconds(team.members.length);
+      if (snapshot !== null && snapshot < fee) {
+        const people = team.members.length;
+        return {
+          ok: false,
+          errors: {
+            hackatimeProject: `that project needs ${fee / 3600}h for a team of ${people}. pick one with more time logged`,
+          },
+        } as SubmitResult;
+      }
     }
     if (kind === "aid") await tx.insert(aidClaims).values({ hcIdHash: hash }).onConflictDoNothing();
     // The live-application index isn't deferrable: retire the old row (pointing at itself)
@@ -207,13 +254,14 @@ export async function submitApplication(
       id,
       userId: user.id,
       kind,
+      feeMode,
       contentEnc: encrypt(content, contentBinding(id)),
       hackatimeSecondsSnapshot: snapshot,
       hackatimeIdEnc: hackatimeId ? encrypt(hackatimeId, hackatimeIdBinding(id)) : null,
       creditedSeconds: fee,
       teamId: team.teamId,
     });
-    await lockForApplication(tx, id, team);
+    await lockForApplication(tx, id, { ...team, feeMode }, SECONDS_PER_APPLICANT);
     if (hackatimeId) {
       await tx
         .update(users)

@@ -124,4 +124,15 @@ describe("Hackatime connection", () => {
   it("sends signed-out users to Hack Club sign-in first", async () => {
     expect(await startHackatime()).toMatch(/^\/auth\/hackclub\/start/);
   });
+
+  it("returns a partner to the portal, and ignores any other return path", async () => {
+    await signIn({ sub: "ident!orpheus" });
+    const url = new URL(await startHackatime("/submissions"));
+    const code = fake.approve({ sub: "ident!orpheus" });
+    expect(await finishHackatime(new URLSearchParams({ code, state: url.searchParams.get("state")! }))).toBe("/submissions");
+    await startHackatime("/submissions");
+    expect(await finishHackatime(new URLSearchParams({ error: "access_denied" }))).toBe("/submissions?hackatime=denied");
+    await startHackatime("https://evil.example");
+    expect(await finishHackatime(new URLSearchParams({ error: "access_denied" }))).toBe("/apply?hackatime=denied");
+  });
 });

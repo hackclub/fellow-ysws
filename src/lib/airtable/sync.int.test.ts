@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb, db } from "@/db";
-import { applications } from "@/db/schema";
+import { applicationMembers, applications } from "@/db/schema";
 import { jar } from "../../../test/cookie-jar";
 import { resetDb } from "../../../test/db";
 import { aidInput, makeUser, projectInput, signInAsAdmin } from "../../../test/factories";
@@ -40,7 +40,7 @@ async function aid() {
 }
 
 describe("syncReviewsToAirtable", () => {
-  it("syncs approved and cut projects only, once each", async () => {
+  it("syncs projects invited to interview and cut projects only, once each", async () => {
     await admin();
     const approved = await project();
     const cut = await project();
@@ -72,6 +72,25 @@ describe("syncReviewsToAirtable", () => {
     expect(fake.airtable).toHaveLength(2);
   });
 
+  it("takes the project at the interview invite, and the round-two decision creates nothing more", async () => {
+    await admin();
+    const selected = await project();
+    const cutLater = await project();
+    await decide(selected, "approve", "", "first pass");
+    await decide(cutLater, "approve", "", "first pass");
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [] });
+    const before = await db().select().from(applications).where(eq(applications.id, selected));
+
+    await decide(selected, "select", "", "great call");
+    await decide(cutLater, "reject_cut", "not this round", "weak call");
+    expect(await countPendingSync()).toBe(0);
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
+    expect(fake.airtable).toHaveLength(2);
+    expect(fake.airtable.map((r) => r.fields["Justification - Additional Justification"])).toEqual(["first pass", "first pass"]);
+    const [after] = await db().select().from(applications).where(eq(applications.id, selected));
+    expect(after.airtableRecordId).toBe(before[0].airtableRecordId);
+  });
+
   it("sends each application's own credited hours", async () => {
     await admin();
     const founder = await makeUser();
@@ -99,5 +118,97 @@ describe("syncReviewsToAirtable", () => {
     expect(r).toMatchObject({ ok: true, synced: 0, failed: 1, errors: [expect.stringMatching(/422: boom/)] });
     expect(await countPendingSync()).toBe(1);
     expect((await syncReviewsToAirtable()).ok && fake.airtable).toHaveLength(1);
+  });
+});
+
+describe("syncReviewsToAirtable — everyone pays for themselves", () => {
+  let nextId = 5000;
+  async function person(project: string, hours: number) {
+    const u = await makeUser();
+    const token = `t-${u.id}`;
+    fake.tokens.set(token, { sub: u.hcId });
+    fake.projects.set(u.hcId, [{ name: project, total_seconds: hours * 3600 }]);
+    fake.hackatimeIds.set(u.hcId, nextId++);
+    return { ...u, token };
+  }
+
+  /** A founder plus `partners` partners; in each-pays mode every partner saves their own project. */
+  async function teamApp(partners: number, mode: "each_pays" | "founder_pays") {
+    const { savePartnerProjectFromForm } = await import("@/lib/teams/partner-project");
+    const founder = await person("big-project", 14);
+    const formed = await teams.formTeam(founder);
+    if (!formed.ok) throw new Error("setup");
+    const ps = [];
+    for (let i = 0; i < partners; i++) {
+      const p = await person(`partner-${i}`, 3);
+      await teams.joinTeam(p, formed.team.inviteToken!);
+      ps.push(p);
+    }
+    await teams.setFeeMode(founder, mode);
+    if (mode === "each_pays") {
+      for (const [i, p] of ps.entries()) {
+        const r = await savePartnerProjectFromForm(
+          p,
+          {
+            hackatimeProject: `partner-${i}`,
+            codeUrl: `https://github.com/p${i}/partner-${i}`,
+            playableUrl: "https://p.example.com",
+            description: `partner ${i}'s project`,
+            heardFrom: "a friend",
+          },
+          p.token,
+        );
+        if (!r.ok) throw new Error(JSON.stringify(r.errors));
+      }
+    }
+    const v = (await teams.getMyTeam(founder.id))!.team.version;
+    const r = await submitApplication(founder, projectInput, founder.token, v);
+    if (!r.ok) throw new Error(JSON.stringify(r.errors));
+    return { id: r.id, founder, partners: ps };
+  }
+
+  it("creates one record per member, each with their own details and 2h credited", async () => {
+    await admin();
+    const { id, partners } = await teamApp(2, "each_pays");
+    await decide(id, "approve", "", "solid team");
+    expect(await countPendingSync()).toBe(3);
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 3, failed: 0, errors: [] });
+    expect(fake.airtable).toHaveLength(3);
+    expect(fake.airtable.map((r) => r.fields["Optional - Override Hours Spent"])).toEqual([2, 2, 2]);
+    expect(fake.airtable.map((r) => r.fields["Code URL"]).sort()).toEqual(
+      [projectInput.codeUrl, "https://github.com/p0/partner-0", "https://github.com/p1/partner-1"].sort(),
+    );
+    for (const p of partners) {
+      const rec = fake.airtable.find((r) => r.fields["Justification - Submitter Hackatime ID"] === String(fake.hackatimeIds.get(p.hcId)));
+      expect(rec?.fields).toMatchObject({ "Justification - Additional Justification": "solid team" });
+    }
+    const members = await db().select().from(applicationMembers).where(eq(applicationMembers.applicationId, id));
+    expect(members.filter((m) => m.role === "partner").every((m) => m.airtableRecordId?.startsWith("rec"))).toBe(true);
+    expect(await countPendingSync()).toBe(0);
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
+  });
+
+  it("creates one record with the whole fee for a founder-pays team", async () => {
+    await admin();
+    const { id } = await teamApp(2, "founder_pays");
+    await decide(id, "approve", "", "ok");
+    expect(await countPendingSync()).toBe(1);
+    await syncReviewsToAirtable();
+    expect(fake.airtable).toHaveLength(1);
+    expect(fake.airtable[0].fields["Optional - Override Hours Spent"]).toBe(6);
+  });
+
+  it("only creates the records that are still missing after a partial sync", async () => {
+    await admin();
+    const { id } = await teamApp(2, "each_pays");
+    await decide(id, "approve", "", "ok");
+    // The founder's record made it last time; the partners' didn't.
+    await db().update(applications).set({ airtableRecordId: "recEXISTING000000", airtableSyncedAt: new Date() }).where(eq(applications.id, id));
+    expect(await countPendingSync()).toBe(2);
+    fake.airtableFailStatus = 503;
+    expect(await syncReviewsToAirtable()).toMatchObject({ ok: true, synced: 0, failed: 2 });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [] });
+    expect(fake.airtable).toHaveLength(2);
+    expect(fake.airtable.every((r) => r.fields["Code URL"] !== projectInput.codeUrl)).toBe(true);
   });
 });

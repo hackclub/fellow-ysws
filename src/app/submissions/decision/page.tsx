@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MarkDecisionSeen } from "@/components/portal/MarkDecisionSeen";
 import { Seal } from "@/components/portal/Seal";
-import { LETTER_CLOSING, SIGNER_NAME, SIGNER_TITLE, letterBody } from "@/content/portal";
+import { LETTER_CLOSING, SIGNER_NAME, SIGNER_TITLE, interviewBookingUrl, letterBody } from "@/content/portal";
 import { requireUser } from "@/lib/auth/guards";
 import { firstName, getPortalState, letterOutcome, longDate } from "@/lib/applications/portal";
 
@@ -57,6 +57,28 @@ export default async function DecisionPage() {
         </footer>
       </article>
 
+      {outcome === "interview" && (
+        <div className="letter-next stack-sm" data-testid="interview-next">
+          {partner ? (
+            <p>your founder will book the interview for the team. you&apos;ll join them on the call.</p>
+          ) : (
+            <>
+              <p>pick a time that works for your whole team.</p>
+              <div>
+                <a
+                  href={interviewBookingUrl({ name: user.name, email: user.email, applicationId: app.id })}
+                  className="button"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="book-interview"
+                >
+                  Book your interview
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       {outcome === "rejected" && !partner && (
         <div className="letter-next stack-sm">
           <p>you can apply again whenever you&apos;re ready.</p>

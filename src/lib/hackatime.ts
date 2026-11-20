@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CREDITED_SECONDS } from "@/db/schema";
 import { hackatime } from "@/lib/auth/providers";
-export { eligibleProjects, feeSeconds, formatHours, type HackatimeProject } from "./hackatime-shared";
+export { eligibleProjects, feeSeconds, formatHours, SECONDS_PER_APPLICANT, type HackatimeProject } from "./hackatime-shared";
 import type { HackatimeProject } from "./hackatime-shared";
 
 export const HACKATIME_COOKIE = "ff_hackatime";

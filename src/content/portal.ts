@@ -16,10 +16,46 @@ export const HERO_PHOTO = {
   sourceUrl: "https://commons.wikimedia.org/wiki/File:Gold_Gate_Poppy.jpg",
 };
 
-export type LetterOutcome = "admitted" | "rejected";
+export type LetterOutcome = "interview" | "admitted" | "rejected";
+
+/** Where an invited founder books the second-round interview. */
+export const INTERVIEW_BOOKING_URL = "https://calendly.com/sebastianhernandez-hackclub/2nd-round-hack-club-fellows";
+
+/**
+ * The booking link, prefilled for the founder. `utm_content` carries the application id so a
+ * booking can be matched to its application. Empty values are left out rather than sent blank.
+ */
+export function interviewBookingUrl({
+  name,
+  email,
+  applicationId,
+}: {
+  name: string | null;
+  email: string | null;
+  applicationId: string;
+}): string {
+  const q = new URLSearchParams();
+  if (name?.trim()) q.set("name", name.trim());
+  if (email?.trim()) q.set("email", email.trim());
+  q.set("utm_content", applicationId);
+  // URLSearchParams writes spaces as "+"; Calendly reads %20 reliably.
+  return `${INTERVIEW_BOOKING_URL}?${q.toString().replace(/\+/g, "%20")}`;
+}
 
 /** Paragraphs of the letter body. `kind` tailors the line about what we reviewed. */
 export function letterBody(outcome: LetterOutcome, kind: "project" | "aid"): string[] {
+  if (outcome === "interview") {
+    const reviewed =
+      kind === "aid"
+        ? "we watched your pitch, and we liked the idea and the team behind it."
+        : "we played what you built, read your code, and saw the hours you logged.";
+    return [
+      "good news: you made it to the second round of FELLOWS FUND™.",
+      `${reviewed} before we make our final decision, we'd like to meet your team on a short call.`,
+      "the founder books one time for the whole team. bring everyone who's on the application.",
+      "this isn't an offer of a spot yet. we'll post our final decision on this page after the interview.",
+    ];
+  }
   if (outcome === "rejected") {
     return [
       `i'm sorry to let you know that we are unable to offer you a spot in the FELLOWS FUND™. this decision says nothing about the work that went into your application. we could tell it was made with care.`,
@@ -44,6 +80,7 @@ export function letterBody(outcome: LetterOutcome, kind: "project" | "aid"): str
 }
 
 export const LETTER_CLOSING: Record<LetterOutcome, string> = {
+  interview: "Talk soon,",
   admitted: "See you in san francisco,",
   rejected: "With very best wishes,",
 };

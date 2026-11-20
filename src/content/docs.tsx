@@ -89,7 +89,7 @@ export const docSections: DocSection[] = [
             <li>a project with 2+ hours on <a href="#hackatime" className="doc-link">Hackatime</a>.</li>
             <li>its code on GitHub, plus a link we can try.</li>
             <li>a <a href="#the-video" className="doc-link">1 minute video</a>.</li>
-            <li>costs <a href="#the-fee" className="doc-link">2 hours per person</a> on your team, from that project.</li>
+            <li>costs <a href="#the-fee" className="doc-link">2 hours per person</a> on your team. you pay it all, or everyone pays their own.</li>
           </ul>
         </div>
         <div className="panel card">
@@ -166,8 +166,17 @@ export const docSections: DocSection[] = [
       <>
         <ul className="bullets">
           <li>the fee is 2 hours for each person on your team, you included. solo is 2 hours; a full team of 4 is 8.</li>
-          <li>only you, the person submitting, pay. it all comes out of the one project you pick, so it needs at least that much logged.</li>
-          <li>partners don&apos;t pay hours.</li>
+          <li>with partners, you choose who pays it:</li>
+          <li>
+            <strong>you pay for everyone.</strong> it all comes out of the one project you pick, so it needs at least
+            that much logged. partners don&apos;t pay hours.
+          </li>
+          <li>
+            <strong>everyone pays for themselves.</strong> each person pays 2 hours from a project they shipped. every
+            partner adds their own project from their own account: 2+ hours on their own Hackatime, a code link and a
+            demo link. no video, yours covers the team. each person needs their own Hackatime account, but you can
+            share a repo.
+          </li>
           <li>those hours are used up, so they can&apos;t count again somewhere else. you can&apos;t submit them to another program.</li>
           <li>the rest of the project&apos;s time is still yours to use in other Hack Club programs.</li>
         </ul>
@@ -180,13 +189,21 @@ export const docSections: DocSection[] = [
             <span aria-hidden="true">→</span>
             <span>5 still yours</span>
           </div>
-          <span className="card-eyebrow">Example: team of 3</span>
+          <span className="card-eyebrow">Example: team of 3, you pay for everyone</span>
           <div className="doc-math">
             <span>7 hours logged</span>
             <span aria-hidden="true">→</span>
             <span>6 to Fellows Fund™</span>
             <span aria-hidden="true">→</span>
             <span>1 still yours</span>
+          </div>
+          <span className="card-eyebrow">Example: team of 3, everyone pays for themselves</span>
+          <div className="doc-math">
+            <span>3 projects, 2+ hours each</span>
+            <span aria-hidden="true">→</span>
+            <span>2 from each to Fellows Fund™</span>
+            <span aria-hidden="true">→</span>
+            <span>the rest still yours</span>
           </div>
         </div>
       </>
@@ -217,7 +234,8 @@ export const docSections: DocSection[] = [
         <li>teams can have up to 4 people: you and 3 partners.</li>
         <li>you fill out the application and share an invite link.</li>
         <li>partners join by signing in with Hack Club through the link.</li>
-        <li>each person adds 2 hours to the <a href="#the-fee" className="doc-link">fee</a>. partners don&apos;t pay hours; only you do, from your project.</li>
+        <li>each person adds 2 hours to the <a href="#the-fee" className="doc-link">fee</a>. you choose whether you pay it all, or everyone pays their own from a project they shipped.</li>
+        <li>if everyone pays, each partner adds their project from their own account before you can submit.</li>
         <li>the team locks when you submit.</li>
         <li>applying solo? skip all of this.</li>
       </ul>
@@ -233,8 +251,10 @@ export const docSections: DocSection[] = [
         <dl className="doc-statuses">
           <dt>Under review</dt>
           <dd>we&apos;re looking at it.</dd>
+          <dt>Interview</dt>
+          <dd>you made it to the second round. the founder books a short call for the whole team from the submissions page.</dd>
           <dt>Accepted</dt>
-          <dd>you&apos;re in. your acceptance letter is waiting on your submissions page.</dd>
+          <dd>you&apos;re in after the interview. your acceptance letter is waiting on your submissions page.</dd>
           <dt>Needs changes</dt>
           <dd>something was missing or broken. read our note, fix it, and submit again.</dd>
           <dt>Not accepted</dt>

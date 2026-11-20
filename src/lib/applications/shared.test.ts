@@ -5,7 +5,9 @@ import {
   normalizeGithubRepo,
   normalizeYouTubeUrl,
   validateApplication,
+  validatePartnerProject,
   type ApplicationInput,
+  type PartnerProjectInput,
 } from "./shared";
 
 const project: ApplicationInput = {
@@ -138,10 +140,46 @@ describe("APPLICANT_LABEL", () => {
   it("shows malformed rejections as Needs changes", () => {
     expect(APPLICANT_LABEL).toEqual({
       submitted: "Under review",
+      interview: "Interview",
       approved: "Accepted",
       rejected_cut: "Not accepted",
       rejected_malformed: "Needs changes",
       rejected_fraud: "Not accepted",
     });
+  });
+});
+
+describe("validatePartnerProject", () => {
+  const partner: PartnerProjectInput = {
+    hackatimeProject: "side-thing",
+    codeUrl: "https://github.com/ben/side-thing.git",
+    playableUrl: "https://side-thing.example.com",
+    description: "a smaller shipped project",
+    heardFrom: "my teammate",
+  };
+
+  it("accepts a full project with no video and normalizes the repo", () => {
+    const r = validatePartnerProject(partner);
+    expect(r).toEqual({ ok: true, value: { ...partner, codeUrl: "https://github.com/ben/side-thing" } });
+  });
+
+  it("drops a video if one is posted", () => {
+    const r = validatePartnerProject({ ...partner, videoUrl: "https://youtu.be/dQw4w9WgXcQ" } as PartnerProjectInput);
+    expect(r.ok && "videoUrl" in r.value).toBe(false);
+  });
+
+  it("rejects a non-github code url", () => {
+    const r = validatePartnerProject({ ...partner, codeUrl: "https://gitlab.com/ben/side-thing" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.codeUrl).toMatch(/github repository/);
+  });
+
+  it("requires a description and a playable url", () => {
+    const r = validatePartnerProject({ ...partner, description: " ", playableUrl: "javascript:alert(1)" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.description).toBe("add a description");
+      expect(r.errors.playableUrl).toMatch(/http/);
+    }
   });
 });

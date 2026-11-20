@@ -2,11 +2,12 @@
 import { z } from "zod";
 
 export type ApplicationKind = "project" | "aid";
-export type ApplicationStatus = "submitted" | "approved" | "rejected_cut" | "rejected_malformed" | "rejected_fraud";
+export type ApplicationStatus = "submitted" | "interview" | "approved" | "rejected_cut" | "rejected_malformed" | "rejected_fraud";
 
 /** The one place internal statuses become applicant-facing words. */
 export const APPLICANT_LABEL: Record<ApplicationStatus, string> = {
   submitted: "Under review",
+  interview: "Interview",
   approved: "Accepted",
   rejected_cut: "Not accepted",
   rejected_malformed: "Needs changes",
@@ -15,6 +16,7 @@ export const APPLICANT_LABEL: Record<ApplicationStatus, string> = {
 
 export const ADMIN_LABEL: Record<ApplicationStatus, string> = {
   submitted: "Pending",
+  interview: "Interview",
   approved: "Approved",
   rejected_cut: "Rejected — cut",
   rejected_malformed: "Rejected — malformed",
@@ -30,6 +32,20 @@ export type ProjectContent = {
   /** Absent on project applications submitted before the video was required. */
   videoUrl?: string;
 };
+
+/** A partner's own project in "each pays" mode: the project fields, without a video. */
+export type PartnerProjectContent = {
+  hackatimeProject: string;
+  codeUrl: string;
+  playableUrl: string;
+  description: string;
+  heardFrom: string;
+};
+
+/** Raw partner-project form input. */
+export type PartnerProjectInput = Partial<Record<keyof PartnerProjectContent, string>>;
+
+export type PartnerProjectErrors = Partial<Record<keyof PartnerProjectContent | "form", string>>;
 
 export type AidContent = {
   videoUrl: string;
@@ -119,8 +135,7 @@ const videoUrl = z
     return yt ?? v;
   });
 
-const projectSchema = z.object({
-  kind: z.literal("project"),
+const projectFields = {
   hackatimeProject: z.string({ error: "pick a hackatime project" }).trim().min(1, "pick a hackatime project"),
   codeUrl: z
     .string({ error: "add a code url" })
@@ -137,9 +152,12 @@ const projectSchema = z.object({
     .min(1, "add a playable url")
     .refine(isHttpUrl, "the playable url must be a link starting with http:// or https://"),
   description: text("a description", LIMITS.description),
-  videoUrl,
   heardFrom: text("how you heard about us", LIMITS.heardFrom),
-});
+};
+
+const projectSchema = z.object({ kind: z.literal("project"), ...projectFields, videoUrl });
+
+const partnerProjectSchema = z.object(projectFields);
 
 const mustAck = (msg: string) => z.literal(true, { error: msg });
 
@@ -187,6 +205,20 @@ export function validateApplication(
       },
     },
   };
+}
+
+/** Validates a partner's own project (same rules as the founder's project fields, no video). */
+export function validatePartnerProject(
+  input: PartnerProjectInput,
+): { ok: true; value: PartnerProjectContent } | { ok: false; errors: PartnerProjectErrors } {
+  const parsed = partnerProjectSchema.safeParse(input);
+  if (parsed.success) return { ok: true, value: parsed.data };
+  const errors: PartnerProjectErrors = {};
+  for (const issue of parsed.error.issues) {
+    const key = (issue.path[0] as keyof PartnerProjectContent | undefined) ?? "form";
+    errors[key] ??= issue.message;
+  }
+  return { ok: false, errors };
 }
 
 /** Plain-word list of what's still missing, for the disabled submit button. */

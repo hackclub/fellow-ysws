@@ -5,7 +5,7 @@ import { docSections } from "@/content/docs";
 // Public: no auth guard, and nothing here reads the session.
 export const metadata = {
   title: "Docs — Hack Club Fellows Fund™",
-  description: "How Fellows Fund™ works, from Hackatime and the fee of 2 hours per person to what happens after you apply.",
+  description: "How Fellows Fund™ works, from Hackatime and the fee of 2 hours per person (paid by you, or by each teammate) to what happens after you apply.",
 };
 
 export default function DocsPage() {

@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireUserForAction } from "@/lib/auth/guards";
-import { DECISION_SEEN_COOKIE, getPortalState, letterOutcome } from "@/lib/applications/portal";
+import { DECISION_SEEN_COOKIE, decisionSeenKey, getPortalState, letterOutcome } from "@/lib/applications/portal";
 import { deleteApplication } from "@/lib/applications/service";
 import { env } from "@/lib/env";
 import { leaveTeam } from "@/lib/teams/service";
@@ -25,7 +25,7 @@ export async function markDecisionSeenAction() {
   const user = await requireUserForAction();
   const { app } = await getPortalState(user);
   if (!app || !letterOutcome(app)) return;
-  (await cookies()).set(DECISION_SEEN_COOKIE, app.id, {
+  (await cookies()).set(DECISION_SEEN_COOKIE, decisionSeenKey(app), {
     httpOnly: true,
     secure: !env().APP_URL.startsWith("http://"),
     sameSite: "lax",
