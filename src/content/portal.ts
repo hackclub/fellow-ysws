@@ -52,7 +52,7 @@ export function letterBody(outcome: LetterOutcome, kind: "project" | "aid"): str
     return [
       "good news: you made it to the second round of FELLOWS FUND™.",
       `${reviewed} before we make our final decision, we'd like to meet your team on a short call.`,
-      "the founder books one time for the whole team. bring everyone who's on the application.",
+      "the founder books one time for the whole team, so coordinate with one another to make sure everyone can make it.",
       "this isn't an offer of a spot yet. we'll post our final decision on this page after the interview.",
     ];
   }
