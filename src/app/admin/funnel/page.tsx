@@ -60,9 +60,17 @@ export default async function FunnelPage({ searchParams }: PageProps<"/admin/fun
         </div>
         <div className="panel stack-sm" data-testid="decided-split">
           <span className="field-label">Decisions</span>
-          {(["approved", "rejected_cut", "rejected_malformed"] as ApplicationStatus[]).map((d) => (
+          {(["interview", "approved", "rejected_cut", "rejected_malformed"] as ApplicationStatus[]).map((d) => (
             <p key={d}>
               {ADMIN_LABEL[d].toLowerCase()}: {report.decidedByOutcome[d] ?? 0}
+            </p>
+          ))}
+        </div>
+        <div className="panel stack-sm" data-testid="interviewed-split">
+          <span className="field-label">After interview</span>
+          {(["approved", "rejected_cut", "rejected_fraud"] as ApplicationStatus[]).map((d) => (
+            <p key={d}>
+              {d === "approved" ? "selected" : ADMIN_LABEL[d].toLowerCase()}: {report.interviewedByOutcome[d] ?? 0}
             </p>
           ))}
         </div>

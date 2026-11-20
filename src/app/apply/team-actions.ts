@@ -7,6 +7,8 @@ import {
   getMyTeam,
   kickPartner,
   replaceInvite,
+  setFeeMode,
+  type FeeMode,
   type FounderActionResult,
   type TeamView,
 } from "@/lib/teams/service";
@@ -52,6 +54,11 @@ export async function replaceInviteAction(): Promise<TeamActionResult> {
 export async function kickPartnerAction(partnerUserId: string): Promise<TeamActionResult> {
   if (typeof partnerUserId !== "string") return { team: null, error: "pick someone to remove" };
   return run((user) => kickPartner(user, partnerUserId));
+}
+
+export async function setFeeModeAction(mode: FeeMode): Promise<TeamActionResult> {
+  if (mode !== "founder_pays" && mode !== "each_pays") return { team: null, error: "pick who pays the fee" };
+  return run((user) => setFeeMode(user, mode));
 }
 
 export async function dissolveTeamAction(): Promise<TeamActionResult> {

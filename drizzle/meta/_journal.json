@@ -43,6 +43,27 @@
       "when": 1794837420744,
       "tag": "0005_per_applicant_fee",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794972391250,
+      "tag": "0006_partner_paid_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794996234468,
+      "tag": "0007_fraud_replaceable",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795190446593,
+      "tag": "0008_second_round_interview",
+      "breakpoints": true
     }
   ]
 }

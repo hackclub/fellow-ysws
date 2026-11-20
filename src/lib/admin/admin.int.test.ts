@@ -3,7 +3,7 @@ import { closeDb, db } from "@/db";
 import { funnelEvents } from "@/db/schema";
 import { jar } from "../../../test/cookie-jar";
 import { resetDb } from "../../../test/db";
-import { aidInput, makeUser, projectInput, signInAsAdmin } from "../../../test/factories";
+import { aidInput, forceDecision, makeUser, projectInput, signInAsAdmin } from "../../../test/factories";
 import { fake, installFakeProviders } from "../../../test/fake-providers";
 
 vi.mock("next/headers", async () => (await import("../../../test/cookie-jar")).nextHeadersMock());
@@ -114,17 +114,21 @@ describe("review list", () => {
 });
 
 describe("decisions", () => {
-  it("approves, recording who and when, and emits a decided event", async () => {
+  it("approves into an interview, recording who and when, and emits a decided event", async () => {
     await admin();
     const { id, user } = await projectApp();
     expect(await decide(id, "approve", "", "solid work")).toEqual({ ok: true });
     const d = await getApplicationDetail(id);
-    expect(d?.app.status).toBe("approved");
+    expect(d?.app.status).toBe("interview");
     expect(d?.decidedBy).toBe("Name ident!admin1");
     expect(d?.app.decidedAt).toBeInstanceOf(Date);
-    expect((await getApplicantState(user)).live?.status).toBe("approved");
+    expect(d?.round2).toBeNull();
+    const state = await getApplicantState(user);
+    expect(state.live?.status).toBe("interview");
+    // still under consideration: no new application, no deleting
+    expect(state.canSubmit).toBe(false);
     const events = await db().select().from(funnelEvents);
-    expect(events.find((e) => e.step === "decided")?.meta).toEqual({ decision: "approved" });
+    expect(events.find((e) => e.step === "decided")?.meta).toEqual({ decision: "interview" });
   });
 
   it.each(["reject_cut", "reject_malformed"] as const)("refuses %s with an empty note", async (decision) => {
@@ -197,5 +201,90 @@ describe("four decision types", () => {
     expect(await getApplicantState(user)).toMatchObject({ canSubmit: false, aidAvailable: false, banned: true });
     const again = await submitApplication(user, projectInput, `t-${user.id}`);
     expect(again).toMatchObject({ ok: false, errors: { form: /can't apply/ } });
+  });
+});
+
+describe("second-round interview", () => {
+  async function invited(note = "") {
+    await admin();
+    const app = await projectApp();
+    expect(await decide(app.id, "approve", note, "first pass")).toEqual({ ok: true });
+    return app;
+  }
+
+  it("selects after the interview, keeping both rounds on record", async () => {
+    const { id, user } = await invited("see you on the call");
+    expect(await decide(id, "select", "great call", "strong interview")).toEqual({ ok: true });
+    const d = await getApplicationDetail(id);
+    expect(d?.app.status).toBe("approved");
+    expect(d?.app.round2).toBe(true);
+    expect(d?.app.note).toBe("great call");
+    expect(d?.firstNote).toBe("see you on the call");
+    expect(d?.justification).toBe("first pass");
+    expect(d?.round2).toMatchObject({ decidedBy: "Name ident!admin1", note: "great call", justification: "strong interview" });
+    expect(d?.round2?.decidedAt).toBeInstanceOf(Date);
+    expect(d?.app.decidedAt).toEqual(d?.round2?.decidedAt);
+    expect((await getApplicantState(user)).live?.status).toBe("approved");
+    const events = await db().select().from(funnelEvents);
+    expect(events.filter((e) => e.step === "decided").map((e) => e.meta)).toEqual([{ decision: "interview" }]);
+    expect(events.filter((e) => e.step === "interviewed").map((e) => e.meta)).toEqual([{ decision: "approved" }]);
+  });
+
+  it("shows no note after selecting without one, even if the invite had one", async () => {
+    const { id } = await invited("see you on the call");
+    await decide(id, "select", "", "strong interview");
+    expect((await getApplicationDetail(id))?.app.note).toBeNull();
+  });
+
+  it("cuts after the interview with a required note, and lets them apply again", async () => {
+    const { id, user } = await invited();
+    expect(await decide(id, "reject_cut", " ", "weak call")).toEqual({ ok: false, error: "note_required" });
+    expect(await decide(id, "reject_cut", "not this round", "weak call")).toEqual({ ok: true });
+    const state = await getApplicantState(user);
+    expect(state.live).toMatchObject({ status: "rejected_cut", note: "not this round", round2: true });
+    expect(state.canSubmit).toBe(true);
+    expect((await getApplicationDetail(id))?.justification).toBe("first pass");
+  });
+
+  it("refuses needs changes and a second approve in round two", async () => {
+    const { id } = await invited();
+    expect(await decide(id, "reject_malformed", "fix it")).toEqual({ ok: false, error: "wrong_round" });
+    expect(await decide(id, "approve", "", "again")).toEqual({ ok: false, error: "already_decided" });
+    expect((await getApplicationDetail(id))?.app.status).toBe("interview");
+  });
+
+  it("refuses select before the interview stage", async () => {
+    const a = await admin();
+    const { id } = await projectApp();
+    expect(await decide(id, "select", "", "skip ahead")).toEqual({ ok: false, error: "wrong_round" });
+    await createSession(a.id);
+    expect(await decideAction(null, form({ id, decision: "select", justification: "x" }))).toEqual({
+      error: expect.stringMatching(/stage/),
+    });
+    expect((await getApplicationDetail(id))?.app.status).toBe("submitted");
+  });
+
+  it("leaves applications approved before interviews existed as final", async () => {
+    const a = await admin();
+    const { id } = await projectApp();
+    await forceDecision(id, "approved", a.id);
+    expect(await decide(id, "select", "", "x")).toEqual({ ok: false, error: "already_decided" });
+    expect(await decide(id, "reject_cut", "n", "x")).toEqual({ ok: false, error: "already_decided" });
+  });
+
+  it("decides round two only once", async () => {
+    const { id } = await invited();
+    const results = await Promise.all([decide(id, "select", "", "a"), decide(id, "reject_cut", "n", "b")]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.find((r) => !r.ok)).toEqual({ ok: false, error: "already_decided" });
+  });
+
+  it("rejects for fraud after the interview and bans the founder", async () => {
+    const { id, user } = await invited();
+    expect(await decide(id, "reject_fraud", "", "faked hours")).toEqual({ ok: true });
+    const d = await getApplicationDetail(id);
+    expect(d?.app.status).toBe("rejected_fraud");
+    expect(d?.banned).toBe(true);
+    expect((await getApplicantState(user)).canSubmit).toBe(false);
   });
 });

@@ -19,8 +19,9 @@ export async function getPortalState(user: CurrentUser): Promise<PortalState> {
   };
 }
 
-/** Decided applications get a letter; everything else doesn't. */
-export function letterOutcome(app: ApplicationView | null): "admitted" | "rejected" | null {
+/** Decided applications get a letter (the interview invite is one too); everything else doesn't. */
+export function letterOutcome(app: ApplicationView | null): "interview" | "admitted" | "rejected" | null {
+  if (app?.status === "interview") return "interview";
   if (app?.status === "approved") return "admitted";
   if (app?.status === "rejected_cut") return "rejected";
   return null;
@@ -36,7 +37,13 @@ export const longDate = (d: Date) => d.toLocaleDateString("en-US", { month: "lon
  */
 export const DECISION_SEEN_COOKIE = "ff_decision_seen";
 
+/**
+ * Which letter was read: the application and its status, so reading the interview invite doesn't
+ * count as reading the decision that comes after the interview.
+ */
+export const decisionSeenKey = (app: ApplicationView) => `${app.id}:${app.status}`;
+
 export async function decisionSeen(app: ApplicationView | null): Promise<boolean> {
   if (!letterOutcome(app)) return false;
-  return (await cookies()).get(DECISION_SEEN_COOKIE)?.value === app!.id;
+  return (await cookies()).get(DECISION_SEEN_COOKIE)?.value === decisionSeenKey(app!);
 }

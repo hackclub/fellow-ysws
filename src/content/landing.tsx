@@ -11,7 +11,7 @@ export const howItWorks = [
   {
     eyebrow: "To apply",
     title: "A project + 2 hours™ per person",
-    body: "pick a project you've worked on, record a one minute video, and apply. the fee is two hours per person on your team, paid from your project alone. brand new to hack club? ask for aid instead of a project.",
+    body: "pick a project you've worked on, record a one minute video, and apply. the fee is two hours per person on your team: pay it all from your project, or have each teammate pay their own. brand new to hack club? ask for aid instead of a project.",
   },
   {
     eyebrow: "Weeks 1–9",
@@ -44,10 +44,10 @@ export const faq: AccordionEntry[] = [
     answer: (
       <p>
         we want to keep this model sustainable and allow for people to iterate quickly.
-        we don&apos;t take money. we take time. the fee is 2 hours for each person on your team, and it comes out of
-        one project you pick on hackatime. applying solo? that&apos;s 2 hours. a team of 3? 6 hours. partners
-        don&apos;t pay hours; only the person submitting does. the rest of that project&apos;s hours are still yours
-        to ship to another program.
+        we don&apos;t take money. we take time. the fee is 2 hours for each person on your team. applying solo?
+        that&apos;s 2 hours. a team of 3 picks who pays: you can cover all 6 hours from one project you pick on
+        hackatime, or everyone pays their own 2 hours from a project they shipped on their own hackatime. the rest
+        of each project&apos;s hours are still yours to ship to another program.
       </p>
     ),
   },

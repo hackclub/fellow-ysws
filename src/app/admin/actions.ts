@@ -12,14 +12,23 @@ const MESSAGES = {
   justification_required: "write a justification — it's required for this decision",
   already_decided: "this application was already decided",
   not_found: "this application no longer exists",
+  bad_ban_target: "the person to ban has to be on this application",
+  wrong_round: "that decision isn't available at this stage of the review",
 } as const;
 
 export async function decideAction(_prev: DecideState, form: FormData): Promise<DecideState> {
   await requireAdminForAction();
   const id = String(form.get("id") ?? "");
   const decision = String(form.get("decision") ?? "") as Decision;
-  if (!["approve", "reject_cut", "reject_malformed", "reject_fraud"].includes(decision)) return { error: "pick a decision" };
-  const result = await decide(id, decision, String(form.get("note") ?? ""), String(form.get("justification") ?? ""));
+  if (!["approve", "select", "reject_cut", "reject_malformed", "reject_fraud"].includes(decision)) return { error: "pick a decision" };
+  const ban = form.get("banUserId");
+  const result = await decide(
+    id,
+    decision,
+    String(form.get("note") ?? ""),
+    String(form.get("justification") ?? ""),
+    decision === "reject_fraud" && typeof ban === "string" && ban ? ban : null,
+  );
   if (!result.ok) return { error: MESSAGES[result.error] };
   revalidatePath(`/admin/applications/${id}`);
   revalidatePath("/admin");

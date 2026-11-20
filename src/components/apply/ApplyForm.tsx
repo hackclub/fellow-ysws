@@ -57,16 +57,25 @@ export function ApplyForm({
     if (started) void formStartedAction();
   }, [started]);
 
-  // The fee is 2 hours per person on the team, founder included; only the founder pays it.
+  // The fee is 2 hours per person on the team, founder included. Either the founder pays all of it,
+  // or ("each pays") everyone pays their own 2 hours and the founder's project only covers theirs.
   const teamSize = team?.members.length ?? 1;
-  const feeHours = feeSeconds(teamSize) / 3600;
+  const eachPays = !!team && team.feeMode === "each_pays" && teamSize > 1;
+  const payingFor = eachPays ? 1 : teamSize;
+  const feeHours = feeSeconds(payingFor) / 3600;
+  const waitingPartners = eachPays
+    ? team.members.filter((m) => m.role === "partner" && !team.readyPartnerIds.includes(m.userId))
+    : [];
   const selected = projects.status === "ok" ? projects.projects.find((p) => p.name === v.hackatimeProject) : undefined;
   // A project that stops covering the fee when the team grows is deselected, so it shows up as missing.
-  if (selected && !coversFee(selected, teamSize)) setV((prev) => ({ ...prev, hackatimeProject: "" }));
+  if (selected && !coversFee(selected, payingFor)) setV((prev) => ({ ...prev, hackatimeProject: "" }));
 
   const errors = state?.errors ?? {};
   const kind = aid ? "aid" : "project";
-  const missing = missingItems({ kind, ...v });
+  const missing = [
+    ...missingItems({ kind, ...v }),
+    ...(aid ? [] : waitingPartners.map((m) => `${m.name}'s project`)),
+  ];
 
   const touch = () => setStarted(true);
   const set = <K extends keyof Values>(key: K) => (value: Values[K]) => {
@@ -135,17 +144,21 @@ export function ApplyForm({
             <ul className="bullets small">
               <li>it doesn&apos;t have to be your startup. anything you&apos;ve shipped counts.</li>
               <li>we list hackatime projects with at least 2 hours logged.</li>
-              <li>
-                the project pays 2 hours for each person on your team, so it needs at least {feeHours} hours
-                {teamSize > 1 ? ` for a team of ${teamSize}` : ""}.
-              </li>
+              {eachPays ? (
+                <li>everyone on your team pays their own 2 hours, so your project only needs 2 hours.</li>
+              ) : (
+                <li>
+                  the project pays 2 hours for each person on your team, so it needs at least {feeHours} hours
+                  {teamSize > 1 ? ` for a team of ${teamSize}` : ""}.
+                </li>
+              )}
             </ul>
             <ProjectPicker
               state={projects}
               value={v.hackatimeProject}
               onChange={set("hackatimeProject")}
               error={errors.hackatimeProject}
-              teamSize={teamSize}
+              teamSize={payingFor}
             />
           </section>
 
@@ -190,22 +203,39 @@ export function ApplyForm({
             />
           </section>
 
-          <TeamSection step={4} team={team} onTeam={setTeam} appUrl={appUrl} error={errors.team} />
+          <TeamSection step={4} team={team} onTeam={setTeam} appUrl={appUrl} error={errors.team} projectPath />
 
           <section className="step" aria-labelledby="step-5">
             <h2 className="step-title" id="step-5">
-              5. Pay the application fee: {feeHours} hours™.
+              5. Pay the application fee: {eachPays ? "2 hours™ each" : `${feeHours} hours™`}.
             </h2>
             <p>we don&apos;t take money. we take time.</p>
             <Panel className="stack-sm">
               <div className="panel-row">
-                <span>Application fee</span>
+                <span>{eachPays ? "Your share" : "Application fee"}</span>
                 <span>{feeHours} hours</span>
               </div>
+              {eachPays &&
+                team.members
+                  .filter((m) => m.role === "partner")
+                  .map((m) => (
+                    <div className="panel-row" key={m.userId} data-testid={`fee-${m.userId}`}>
+                      <span>
+                        {m.name}
+                        <span className="small muted">
+                          {" "}
+                          · {team.readyPartnerIds.includes(m.userId) ? "ready" : "not ready yet"}
+                        </span>
+                      </span>
+                      <span>2 hours, from their own project</span>
+                    </div>
+                  ))}
               <p className="small muted">
-                {teamSize > 1
-                  ? `2 hours × ${teamSize} people. only you pay; partners don't.`
-                  : "2 hours for you. each partner you add adds 2 hours, and you pay for them."}
+                {eachPays
+                  ? `2 hours × ${teamSize} people, each from their own project.`
+                  : teamSize > 1
+                    ? `2 hours × ${teamSize} people. only you pay; partners don't.`
+                    : "2 hours for you. each partner you add adds 2 hours. you can pay for them, or have them pay for themselves."}
               </p>
               <p className="small muted">
                 {selected
@@ -214,8 +244,11 @@ export function ApplyForm({
               </p>
             </Panel>
             <ul className="bullets small">
-              <li>fellows fund™ only takes {feeHours} hours of credit from your project, not the full amount.</li>
-              <li>the rest of that project&apos;s hours are still yours to reship to another program.</li>
+              <li>
+                fellows fund™ only takes {feeHours} hours of credit from {eachPays ? "each project" : "your project"}, not the
+                full amount.
+              </li>
+              <li>the rest of {eachPays ? "each" : "that"} project&apos;s hours are still yours to reship to another program.</li>
             </ul>
           </section>
         </>

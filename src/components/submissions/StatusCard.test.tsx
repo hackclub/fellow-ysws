@@ -8,6 +8,7 @@ const { StatusCard } = await import("./StatusCard");
 const base: ApplicationView = {
   id: "a1",
   kind: "project",
+  feeMode: "founder_pays",
   status: "submitted",
   content: {
     hackatimeProject: "big-project",
@@ -22,11 +23,13 @@ const base: ApplicationView = {
   creditedSeconds: 7200,
   createdAt: new Date("2026-11-01"),
   decidedAt: null,
+  round2: false,
 };
 
 describe("StatusCard", () => {
   it.each([
     ["submitted", "Under review"],
+    ["interview", "Decision ready"],
     ["approved", "Decision ready"],
     ["rejected_cut", "Decision ready"],
     ["rejected_malformed", "Needs changes"],
@@ -98,6 +101,33 @@ describe("StatusCard — after the letter is read", () => {
   });
 });
 
+describe("StatusCard — interview", () => {
+  const decidedAt = new Date("2026-11-13T12:00:00");
+  const bookingUrl = "https://calendly.com/x?name=Fiona&utm_content=a1";
+
+  it("gives the founder the booking button after the invite letter is read", () => {
+    render(<StatusCard app={{ ...base, status: "interview", decidedAt }} decisionSeen bookingUrl={bookingUrl} />);
+    expect(screen.getByTestId("status-label")).toHaveTextContent("Second round");
+    const book = screen.getByRole("link", { name: "Book your interview" });
+    expect(book).toHaveAttribute("href", bookingUrl);
+    expect(book).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Reread your letter" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
+  });
+
+  it("tells a partner the founder books, with no link", () => {
+    render(<StatusCard app={{ ...base, status: "interview", decidedAt }} viewer="partner" decisionSeen bookingUrl={bookingUrl} />);
+    expect(screen.getByText(/your founder will book it/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Book your interview" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the invite behind Decision ready until the letter is read", () => {
+    render(<StatusCard app={{ ...base, status: "interview", decidedAt }} bookingUrl={bookingUrl} />);
+    expect(screen.getByTestId("status-label")).toHaveTextContent("Decision ready");
+    expect(screen.queryByRole("link", { name: "Book your interview" })).not.toBeInTheDocument();
+  });
+});
+
 describe("StatusCard — teams", () => {
   const members = [
     { userId: "f", role: "founder" as const, name: "Fiona" },
@@ -132,3 +162,57 @@ describe("StatusCard — teams", () => {
   });
 });
 
+
+describe("StatusCard — everyone pays", () => {
+  const ownProject = {
+    userId: "p1",
+    name: "Pat",
+    content: {
+      hackatimeProject: "side-thing",
+      codeUrl: "https://github.com/pat/side-thing",
+      playableUrl: "https://side.example.com",
+      description: "pat's project",
+      heardFrom: "Fiona",
+    },
+    snapshotSeconds: 3 * 3600 + 120,
+    creditedSeconds: 7200,
+    hackatimeId: "1001",
+  };
+  const members = [
+    { userId: "f", role: "founder" as const, name: "Fiona" },
+    { userId: "p1", role: "partner" as const, name: "Pat" },
+  ];
+
+  it("shows a partner their own submitted project with 2h credited", () => {
+    render(
+      <StatusCard app={{ ...base, feeMode: "each_pays" }} members={members} viewer="partner" ownProject={ownProject} />,
+    );
+    const section = screen.getByRole("region", { name: "Your project:" });
+    expect(section).toHaveTextContent("side-thing — 3h 02m logged, 2h 00m credited");
+    expect(section).toHaveTextContent("https://github.com/pat/side-thing");
+    expect(screen.getByTestId("fee-mode")).toHaveTextContent("fee: everyone paid for themselves.");
+    expect(screen.queryByRole("button", { name: /delete/i })).not.toBeInTheDocument();
+  });
+
+  it("shows no own-project section without one", () => {
+    render(<StatusCard app={base} members={members} viewer="partner" />);
+    expect(screen.queryByRole("region", { name: "Your project:" })).not.toBeInTheDocument();
+  });
+});
+
+describe("StatusCard — fraud", () => {
+  const fraud = { ...base, status: "rejected_fraud" as const, decidedAt: new Date("2026-11-10") };
+
+  it("tells a banned viewer they can't apply again", () => {
+    render(<StatusCard app={fraud} banned />);
+    expect(screen.getByText(/you can't apply to FELLOWS FUND™ again/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Start a new application" })).not.toBeInTheDocument();
+  });
+
+  it("lets a founder who wasn't banned start a new application", () => {
+    render(<StatusCard app={fraud} banned={false} />);
+    expect(screen.getByTestId("fraud-not-at-fault")).toHaveTextContent("isn't held against you");
+    expect(screen.queryByText(/can't apply to FELLOWS FUND™ again/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Start a new application" })).toHaveAttribute("href", "/apply");
+  });
+});

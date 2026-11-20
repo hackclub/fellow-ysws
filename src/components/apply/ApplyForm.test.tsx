@@ -10,6 +10,7 @@ vi.mock("@/app/apply/team-actions", () => ({
   kickPartnerAction: vi.fn(),
   dissolveTeamAction: vi.fn(),
   refreshTeamAction: vi.fn(),
+  setFeeModeAction: vi.fn(),
 }));
 const { ApplyForm } = await import("./ApplyForm");
 const actions = await import("@/app/apply/actions");
@@ -25,6 +26,8 @@ const teamOf = (people: number): TeamView => ({
     name: `Person ${i}`,
   })),
   partnerSpotsLeft: 4 - people,
+  feeMode: "founder_pays",
+  readyPartnerIds: [],
   inviteToken: "TOKEN",
 });
 
@@ -112,5 +115,50 @@ describe("ApplyForm — fee per person", () => {
     expect(screen.getByRole("radio", { name: /tiny-compiler/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /tiny-compiler/ })).toHaveAccessibleDescription("needs 6h for a team of 3");
     expect(screen.getByTestId("still-missing")).toHaveTextContent("a hackatime project");
+  });
+});
+
+describe("ApplyForm — everyone pays for themselves", () => {
+  const projectsShort = {
+    status: "ok" as const,
+    projects: [{ name: "tiny-compiler", totalSeconds: 2 * 3600 + 600 }],
+  };
+  const eachPays = (people: number, ready: number[] = []): TeamView => {
+    const t = teamOf(people);
+    return { ...t, feeMode: "each_pays", readyPartnerIds: ready.map((i) => `u${i}`) };
+  };
+
+  it("charges the founder 2 hours, lists each partner's share, and lets a 2h project pay", () => {
+    render(<ApplyForm projects={projectsShort} aidAvailable team={eachPays(3, [1])} />);
+    expect(screen.getByRole("button", { name: "Pay 2 hours & submit" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "5. Pay the application fee: 2 hours™ each." })).toBeInTheDocument();
+    expect(screen.getByText("2 hours × 3 people, each from their own project.")).toBeInTheDocument();
+    expect(screen.getByTestId("fee-u1")).toHaveTextContent("Person 1 · ready");
+    expect(screen.getByTestId("fee-u2")).toHaveTextContent("Person 2 · not ready yet");
+    expect(screen.getByRole("radio", { name: /tiny-compiler/ })).toBeEnabled();
+  });
+
+  it("lists partners without a project as still missing", () => {
+    render(<ApplyForm projects={projectsShort} aidAvailable team={eachPays(3, [1])} />);
+    expect(screen.getByTestId("still-missing")).toHaveTextContent("Person 2's project");
+    expect(screen.getByTestId("still-missing")).not.toHaveTextContent("Person 1's project");
+  });
+
+  it("goes back to the founder paying everything when switched", async () => {
+    teamActions.setFeeModeAction.mockResolvedValue({ team: teamOf(3) });
+    render(<ApplyForm projects={projectsShort} aidAvailable team={eachPays(3, [1, 2])} />);
+    await userEvent.click(screen.getByRole("radio", { name: /tiny-compiler/ }));
+    await userEvent.click(screen.getByRole("radio", { name: /I'll pay for everyone/ }));
+    expect(await screen.findByRole("button", { name: "Pay 6 hours & submit" })).toBeInTheDocument();
+    // The 2h 10m project can't pay 6 hours, so it's deselected.
+    expect(screen.getByRole("radio", { name: /tiny-compiler/ })).not.toBeChecked();
+    expect(screen.getByTestId("still-missing")).toHaveTextContent("a hackatime project");
+  });
+
+  it("ignores the mode on the aid path", async () => {
+    render(<ApplyForm projects={projectsShort} aidAvailable team={eachPays(3)} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /request financial aid/i }));
+    expect(screen.getByTestId("still-missing")).not.toHaveTextContent("project");
+    expect(screen.queryByRole("radio", { name: /pays for themselves/ })).not.toBeInTheDocument();
   });
 });

@@ -1,22 +1,27 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { applications, users } from "@/db/schema";
+import { applicationMembers, applications, users } from "@/db/schema";
 import { decrypt } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { assertAdmin } from "@/lib/auth/guards";
 import { piiBinding, type UserPii } from "@/lib/auth/session";
-import { justificationBinding, toView, type ApplicationView } from "@/lib/applications/service";
-import type { ProjectContent } from "@/lib/applications/shared";
+import { justificationBinding, toView } from "@/lib/applications/service";
+import type { PartnerProjectContent, ProjectContent } from "@/lib/applications/shared";
 import { userHackatimeIdBinding } from "@/lib/hackatime";
+import { memberContentBinding, memberHackatimeBinding } from "@/lib/teams/service";
 import { buildFields } from "./fields";
 
 /**
  * Pushes finished project reviews to the YSWS Airtable table (docs/airtable.md).
- * Synced: project applications that were approved or didn't make the cut.
- * Never synced: financial aid, "Needs changes", fraud, or anything still pending.
+ * Synced: project applications that were invited to interview or didn't make the cut, one record per
+ * paying project (the founder's, plus each partner's own project on "everyone pays for themselves"
+ * teams). The project is taken whatever the interview's outcome, so a record is created once at the
+ * invite and the round-two decision never touches it. "approved" stays for approvals from before
+ * interviews existed. Never synced: financial aid, "Needs changes", fraud in round one, or anything
+ * still pending.
  */
-const SYNCED_STATUSES = ["approved", "rejected_cut"] as const;
+const SYNCED_STATUSES = ["interview", "approved", "rejected_cut"] as const;
 const BATCH = 10; // Airtable's per-request limit
 const PAUSE_MS = 250; // stays under Airtable's 5 requests/second per base
 
@@ -40,17 +45,38 @@ const pending = and(
   isNull(applications.airtableRecordId),
 );
 
+/** Partners' own projects on decided "each pays" applications that don't have a record yet. */
+const pendingMembers = and(
+  eq(applications.kind, "project"),
+  inArray(applications.status, [...SYNCED_STATUSES]),
+  isNotNull(applicationMembers.contentEnc),
+  isNull(applicationMembers.airtableRecordId),
+);
+
+/** Records still to create: one per paying project (the founder's, plus each partner's in "each pays"). */
 export async function countPendingSync(): Promise<number> {
   await assertAdmin();
-  const [{ n }] = await db().select({ n: sql<number>`count(*)::int` }).from(applications).where(pending);
-  return n;
+  const [[{ n }], [{ m }]] = await Promise.all([
+    db().select({ n: sql<number>`count(*)::int` }).from(applications).where(pending),
+    db()
+      .select({ m: sql<number>`count(*)::int` })
+      .from(applicationMembers)
+      .innerJoin(applications, eq(applications.id, applicationMembers.applicationId))
+      .where(pendingMembers),
+  ]);
+  return n + m;
 }
 
 export type SyncResult =
   | { ok: true; synced: number; failed: number; errors: string[] }
   | { ok: false; reason: "not_configured" | "busy" };
 
-type Candidate = { app: ApplicationView; pii: UserPii; hackatimeId: string | null; justification: string | null };
+/** One Airtable record to create, and where its record id is written back. */
+type Candidate = {
+  target: { kind: "application"; id: string } | { kind: "member"; applicationId: string; userId: string };
+  decidedAt: Date | null;
+  fields: Parameters<typeof buildFields>[0];
+};
 
 export async function syncReviewsToAirtable(): Promise<SyncResult> {
   await assertAdmin();
@@ -64,23 +90,54 @@ export async function syncReviewsToAirtable(): Promise<SyncResult> {
     ).rows;
     if (!locked) return { ok: false, reason: "busy" } as const;
 
-    const rows = await tx
+    const justificationOf = (app: typeof applications.$inferSelect) =>
+      app.justificationEnc ? decrypt<string>(app.justificationEnc, justificationBinding(app.id)) : null;
+
+    const founderRows = await tx
       .select({ app: applications, user: users })
       .from(applications)
       .innerJoin(users, eq(users.id, applications.userId))
-      .where(pending)
-      .orderBy(asc(applications.decidedAt));
+      .where(pending);
+    const memberRows = await tx
+      .select({ member: applicationMembers, app: applications, user: users })
+      .from(applicationMembers)
+      .innerJoin(applications, eq(applications.id, applicationMembers.applicationId))
+      .innerJoin(users, eq(users.id, applicationMembers.userId))
+      .where(pendingMembers);
 
-    const candidates: Candidate[] = rows.map(({ app, user }) => {
-      const view = toView(app);
-      return {
-        app: view,
-        pii: decrypt<UserPii>(user.piiEnc, piiBinding(user.id)),
-        hackatimeId:
-          view.hackatimeId ?? (user.hackatimeIdEnc ? decrypt<string>(user.hackatimeIdEnc, userHackatimeIdBinding(user.id)) : null),
-        justification: app.justificationEnc ? decrypt<string>(app.justificationEnc, justificationBinding(app.id)) : null,
-      };
-    });
+    const candidates: Candidate[] = [
+      ...founderRows.map(({ app, user }): Candidate => {
+        const view = toView(app);
+        return {
+          target: { kind: "application", id: app.id },
+          decidedAt: app.decidedAt,
+          fields: {
+            content: view.content as ProjectContent,
+            pii: decrypt<UserPii>(user.piiEnc, piiBinding(user.id)),
+            hackatimeId:
+              view.hackatimeId ??
+              (user.hackatimeIdEnc ? decrypt<string>(user.hackatimeIdEnc, userHackatimeIdBinding(user.id)) : null),
+            loggedSeconds: view.hackatimeSecondsSnapshot ?? 0,
+            cappedSeconds: view.creditedSeconds ?? 0,
+            submittedAt: view.createdAt,
+            justification: justificationOf(app),
+          },
+        };
+      }),
+      ...memberRows.map(({ member, app, user }): Candidate => ({
+        target: { kind: "member", applicationId: app.id, userId: member.userId },
+        decidedAt: app.decidedAt,
+        fields: {
+          content: decrypt<PartnerProjectContent>(member.contentEnc!, memberContentBinding(app.id, member.userId)),
+          pii: decrypt<UserPii>(user.piiEnc, piiBinding(user.id)),
+          hackatimeId: decrypt<string>(member.hackatimeIdEnc!, memberHackatimeBinding(app.id, member.userId)),
+          loggedSeconds: member.hackatimeSecondsSnapshot ?? 0,
+          cappedSeconds: member.creditedSeconds ?? 0,
+          submittedAt: app.createdAt,
+          justification: justificationOf(app),
+        },
+      })),
+    ].sort((a, b) => (a.decidedAt?.getTime() ?? 0) - (b.decidedAt?.getTime() ?? 0));
 
     let synced = 0;
     let failed = 0;
@@ -90,29 +147,30 @@ export async function syncReviewsToAirtable(): Promise<SyncResult> {
       if (i > 0) await new Promise((r) => setTimeout(r, PAUSE_MS));
       const created = await createRecords(
         config,
-        batch.map((c) =>
-          buildFields({
-            content: c.app.content as ProjectContent,
-            pii: c.pii,
-            hackatimeId: c.hackatimeId,
-            loggedSeconds: c.app.hackatimeSecondsSnapshot ?? 0,
-            cappedSeconds: c.app.creditedSeconds ?? 0,
-            submittedAt: c.app.createdAt,
-            justification: c.justification,
-          }),
-        ),
+        batch.map((c) => buildFields(c.fields)),
       );
       if (!created.ok) {
         failed += batch.length;
         errors.push(created.error);
         continue;
       }
+      // Each record is marked on its own row, so a later failure only retries what's missing.
       const now = new Date();
       for (const [j, c] of batch.entries()) {
-        await tx
-          .update(applications)
-          .set({ airtableRecordId: created.ids[j], airtableSyncedAt: now })
-          .where(eq(applications.id, c.app.id));
+        const set = { airtableRecordId: created.ids[j], airtableSyncedAt: now };
+        if (c.target.kind === "application") {
+          await tx.update(applications).set(set).where(eq(applications.id, c.target.id));
+        } else {
+          await tx
+            .update(applicationMembers)
+            .set(set)
+            .where(
+              and(
+                eq(applicationMembers.applicationId, c.target.applicationId),
+                eq(applicationMembers.userId, c.target.userId),
+              ),
+            );
+        }
       }
       synced += batch.length;
     }

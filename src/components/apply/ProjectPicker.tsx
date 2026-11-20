@@ -13,6 +13,7 @@ export function ProjectPicker({
   onChange,
   error,
   teamSize = 1,
+  returnTo = "/apply",
 }: {
   state: ProjectsState;
   value: string;
@@ -20,7 +21,10 @@ export function ProjectPicker({
   error?: string;
   /** People on the team, founder included. The fee is 2 hours each. */
   teamSize?: number;
+  /** Where the Hackatime connect flow comes back to. */
+  returnTo?: "/apply" | "/submissions";
 }) {
+  const connectHref = returnTo === "/apply" ? "/auth/hackatime/start" : `/auth/hackatime/start?next=${encodeURIComponent(returnTo)}`;
   const feeHours = feeSeconds(teamSize) / 3600;
   const shortNote = `needs ${feeHours}h for a team of ${teamSize}`;
   if (state.status === "not_connected") {
@@ -36,9 +40,9 @@ export function ProjectPicker({
             something went wrong connecting hackatime. try again.
           </p>
         )}
-        <p className="small">connect hackatime so we can list projects with at least 2 hours logged (2 hours per person on your team).</p>
+        <p className="small">connect hackatime so we can list projects with at least 2 hours logged{returnTo === "/apply" ? " (2 hours per person on your team)" : ""}.</p>
         <div>
-          <a className="button" href="/auth/hackatime/start">
+          <a className="button" href={connectHref}>
             Connect Hackatime
           </a>
         </div>
@@ -52,7 +56,7 @@ export function ProjectPicker({
         <p className="notice">{state.message.toLowerCase()}.</p>
         <p>
           {state.reconnect ? (
-            <a className="text-link" href="/auth/hackatime/start">
+            <a className="text-link" href={connectHref}>
               Reconnect Hackatime
             </a>
           ) : (

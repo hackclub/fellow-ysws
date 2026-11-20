@@ -3,7 +3,7 @@ import { assertAdmin } from "@/lib/auth/guards";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 
-export const FUNNEL_STEPS = ["visit", "signed_in", "hackatime_connected", "form_started", "submitted", "decided"] as const;
+export const FUNNEL_STEPS = ["visit", "signed_in", "hackatime_connected", "form_started", "submitted", "decided", "interviewed"] as const;
 export type FunnelStepName = (typeof FUNNEL_STEPS)[number];
 
 export const STEP_LABEL: Record<FunnelStepName, string> = {
@@ -13,6 +13,7 @@ export const STEP_LABEL: Record<FunnelStepName, string> = {
   form_started: "Started form",
   submitted: "Submitted",
   decided: "Decided",
+  interviewed: "Decided after interview",
 };
 
 export type FunnelReport = {
@@ -21,6 +22,8 @@ export type FunnelReport = {
   steps: { step: FunnelStepName; people: number; fromPrevious: number | null }[];
   submittedByKind: Record<string, number>;
   decidedByOutcome: Record<string, number>;
+  /** Round-two decisions (after the interview), by outcome. */
+  interviewedByOutcome: Record<string, number>;
 };
 
 const pct = (n: number, d: number) => (d === 0 ? null : Math.round((n / d) * 1000) / 10);
@@ -58,6 +61,7 @@ export async function funnelReport(from: Date, to: Date): Promise<FunnelReport> 
     steps,
     submittedByKind: await split("submitted", "kind"),
     decidedByOutcome: await split("decided", "decision"),
+    interviewedByOutcome: await split("interviewed", "decision"),
   };
 }
 

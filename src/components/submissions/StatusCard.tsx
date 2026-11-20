@@ -2,10 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ApplicationView } from "@/lib/applications/service";
 import { letterOutcome, longDate } from "@/lib/applications/portal";
-import { ApplicationDetails } from "./ApplicationDetails";
+import { ApplicationDetails, FEE_MODE_LABEL, PartnerProjectDetails } from "./ApplicationDetails";
 import { DeleteButton } from "./DeleteButton";
 import { TeamMembers } from "./TeamMembers";
-import type { Member } from "@/lib/teams/service";
+import type { Member, MemberProject } from "@/lib/teams/service";
 
 /** Bordered status box: eyebrow, "Plain *italic*." title, body, and an optional action. */
 export function StatusBox({
@@ -42,12 +42,21 @@ export function StatusCard({
   members = [],
   viewer = "founder",
   decisionSeen = false,
+  ownProject = null,
+  banned = true,
+  bookingUrl = null,
 }: {
   app: ApplicationView;
   members?: Member[];
+  /** For a partner on an "each pays" application: their own submitted project. */
+  ownProject?: MemberProject | null;
+  /** Whether the viewer is banned. A fraud rejection that banned a teammate lets the founder start over. */
+  banned?: boolean;
   viewer?: "founder" | "partner";
   /** The viewer has opened this decision's letter, so the outcome isn't a surprise any more. */
   decisionSeen?: boolean;
+  /** The founder's prefilled interview booking link. Partners don't get one: the founder books. */
+  bookingUrl?: string | null;
 }) {
   const founder = viewer === "founder";
   const decided = letterOutcome(app);
@@ -57,9 +66,23 @@ export function StatusCard({
     <>
       <section className="stack" aria-labelledby="status-heading">
         <h2 id="status-heading">Application status:</h2>
-        {app.status === "rejected_fraud" ? (
+        {app.status === "rejected_fraud" && banned ? (
           <StatusBox eyebrow={app.decidedAt ? `Decided · ${longDate(app.decidedAt)}` : undefined} title={["Not", "accepted"]}>
             <p className="status-body">this application wasn&apos;t accepted, and you can&apos;t apply to FELLOWS FUND™ again.</p>
+          </StatusBox>
+        ) : app.status === "rejected_fraud" ? (
+          <StatusBox eyebrow={app.decidedAt ? `Decided · ${longDate(app.decidedAt)}` : undefined} title={["Not", "accepted"]}>
+            <p className="status-body" data-testid="fraud-not-at-fault">
+              this application wasn&apos;t accepted because of a problem with someone else on the team. it isn&apos;t
+              held against you: you can start a new application whenever you&apos;re ready.
+            </p>
+            {founder && (
+              <div className="status-actions">
+                <Link href="/apply" className="button">
+                  Start a new application
+                </Link>
+              </div>
+            )}
           </StatusBox>
         ) : decided === "rejected" && decisionSeen ? (
           <StatusBox eyebrow={app.decidedAt ? `Decided · ${longDate(app.decidedAt)}` : undefined} title={["Apply", "again"]}>
@@ -73,6 +96,24 @@ export function StatusCard({
                 <Link href="/apply" className="button">
                   Start a new application
                 </Link>
+              )}
+              <Link href="/submissions/decision" className="text-link small">
+                Reread your letter
+              </Link>
+            </div>
+          </StatusBox>
+        ) : decided === "interview" && decisionSeen ? (
+          <StatusBox eyebrow={app.decidedAt ? `Invited · ${longDate(app.decidedAt)}` : undefined} title={["Second", "round"]}>
+            <p className="status-body">
+              {founder
+                ? "you're invited to a second-round interview. book a time for your whole team. we'll post our final decision here after the call."
+                : "you're invited to a second-round interview. your founder will book it for the team, and you'll join them on the call."}
+            </p>
+            <div className="status-actions">
+              {founder && bookingUrl && (
+                <a href={bookingUrl} className="button" target="_blank" rel="noopener noreferrer" data-testid="book-interview">
+                  Book your interview
+                </a>
               )}
               <Link href="/submissions/decision" className="text-link small">
                 Reread your letter
@@ -128,11 +169,27 @@ export function StatusCard({
       </section>
 
       {members.length > 1 && <TeamMembers members={members} />}
+      {members.length > 1 && app.kind === "project" && (
+        <p className="small muted" data-testid="fee-mode">
+          fee: {FEE_MODE_LABEL[app.feeMode]}.
+        </p>
+      )}
 
       <section className="stack" aria-labelledby="application-heading">
         <h2 id="application-heading">Your application:</h2>
         <ApplicationDetails app={app} />
       </section>
+
+      {ownProject && (
+        <section className="stack" aria-labelledby="own-project-heading">
+          <h2 id="own-project-heading">Your project:</h2>
+          <PartnerProjectDetails
+            content={ownProject.content}
+            snapshotSeconds={ownProject.snapshotSeconds}
+            creditedSeconds={ownProject.creditedSeconds}
+          />
+        </section>
+      )}
 
       {founder && app.status === "submitted" && (
         <div>

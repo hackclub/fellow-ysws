@@ -93,7 +93,8 @@ describe("funnel report", () => {
       ev("form_started", { userId: users[1].id }),
       ev("submitted", { userId: users[0].id }, { kind: "project" }),
       ev("submitted", { userId: users[1].id }, { kind: "aid" }),
-      ev("decided", { userId: users[0].id }, { decision: "approved" }),
+      ev("decided", { userId: users[0].id }, { decision: "interview" }),
+      ev("interviewed", { userId: users[0].id }, { decision: "approved" }),
       // outside the range
       ev("visit", { anonId: "late" }, undefined, new Date("2026-12-01T00:00:00Z")),
     ]);
@@ -107,9 +108,11 @@ describe("funnel report", () => {
       ["form_started", 2, 200],
       ["submitted", 2, 100],
       ["decided", 1, 50],
+      ["interviewed", 1, 100],
     ]);
     expect(r.submittedByKind).toEqual({ project: 1, aid: 1 });
-    expect(r.decidedByOutcome).toEqual({ approved: 1 });
+    expect(r.decidedByOutcome).toEqual({ interview: 1 });
+    expect(r.interviewedByOutcome).toEqual({ approved: 1 });
   });
 
   it("defaults to the last 30 days and treats the end date as inclusive", () => {

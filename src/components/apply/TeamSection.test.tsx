@@ -10,6 +10,7 @@ vi.mock("@/app/apply/team-actions", () => ({
   kickPartnerAction: vi.fn(),
   dissolveTeamAction: vi.fn(),
   refreshTeamAction: vi.fn(),
+  setFeeModeAction: vi.fn(),
 }));
 const actions = vi.mocked(await import("@/app/apply/team-actions"));
 const { TeamSection } = await import("./TeamSection");
@@ -23,15 +24,17 @@ const team = (over: Partial<TeamView> = {}): TeamView => ({
     { userId: "p1", role: "partner", name: "Pat" },
   ],
   partnerSpotsLeft: 2,
+  feeMode: "founder_pays",
+  readyPartnerIds: [],
   inviteToken: "TOKEN123",
   ...over,
 });
 
-function Harness({ initial }: { initial: TeamView | null }) {
+function Harness({ initial, projectPath = true }: { initial: TeamView | null; projectPath?: boolean }) {
   const [t, setT] = useState(initial);
   return (
     <form data-testid="form">
-      <TeamSection step={3} team={t} onTeam={setT} appUrl="https://fellows.test" />
+      <TeamSection step={3} team={t} onTeam={setT} appUrl="https://fellows.test" projectPath={projectPath} />
     </form>
   );
 }
@@ -42,7 +45,7 @@ describe("Team section contents", () => {
   it("offers to add partners when there's no team, and sends no team version", async () => {
     render(<Harness initial={null} />);
     expect(screen.getByRole("heading", { name: "3. Bring your team." })).toBeInTheDocument();
-    expect(screen.getByText(/each person on the team adds 2 hours to the project fee. partners don't pay hours; only you do./)).toBeInTheDocument();
+    expect(screen.getByText(/the fee is 2 hours per person on the team. once you add partners, you choose who pays it./)).toBeInTheDocument();
     expect(new FormData(screen.getByTestId("form") as HTMLFormElement).get("teamVersion")).toBe("");
 
     actions.formTeamAction.mockResolvedValue({ team: team({ members: [team().members[0]], partnerSpotsLeft: 3 }) });
@@ -87,5 +90,36 @@ describe("Team section contents", () => {
     render(<Harness initial={team()} />);
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
     expect(await screen.findByTestId("team-error")).toHaveTextContent(/locked/);
+  });
+});
+
+describe("Fee mode choice", () => {
+  it("shows both modes on the project path with the current one checked", () => {
+    render(<Harness initial={team()} />);
+    expect(screen.getByRole("radio", { name: /I'll pay for everyone/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Everyone pays for themselves/ })).not.toBeChecked();
+    // No ready badges in founder-pays mode.
+    expect(screen.queryByTestId("ready-p1")).not.toBeInTheDocument();
+  });
+
+  it("is hidden on the aid path", () => {
+    render(<Harness initial={team({ feeMode: "each_pays" })} projectPath={false} />);
+    expect(screen.queryByRole("radio", { name: /pays for themselves/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("ready-p1")).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 hours per person/)).not.toBeInTheDocument();
+  });
+
+  it("switches mode through the server and shows partner readiness", async () => {
+    actions.setFeeModeAction.mockResolvedValue({ team: team({ feeMode: "each_pays", version: 4 }) });
+    render(<Harness initial={team()} />);
+    await userEvent.click(screen.getByRole("radio", { name: /Everyone pays for themselves/ }));
+    expect(actions.setFeeModeAction).toHaveBeenCalledWith("each_pays");
+    expect(await screen.findByTestId("ready-p1")).toHaveTextContent("no project yet");
+    expect(new FormData(screen.getByTestId("form") as HTMLFormElement).get("teamVersion")).toBe("4");
+  });
+
+  it("marks partners who added their project", () => {
+    render(<Harness initial={team({ feeMode: "each_pays", readyPartnerIds: ["p1"] })} />);
+    expect(screen.getByTestId("ready-p1")).toHaveTextContent("project added ✓");
   });
 });

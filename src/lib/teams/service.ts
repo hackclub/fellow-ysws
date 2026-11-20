@@ -1,10 +1,11 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
 import { applicationMembers, applications, programBans, TEAM_MAX_MEMBERS, teamMembers, teams, users } from "@/db/schema";
 import { decrypt, encrypt, inviteTokenHash, randomToken } from "@/lib/crypto";
 import { piiBinding, type UserPii } from "@/lib/auth/session";
+import type { PartnerProjectContent } from "@/lib/applications/shared";
 import { lockUser, type Tx } from "@/lib/locks";
 
 // Team lifecycle (see openspec/changes/team-applications/design.md):
@@ -14,6 +15,7 @@ import { lockUser, type Tx } from "@/lib/locks";
 // Every transition locks the team row (after the acting user's lock) and bumps `version`.
 
 export type TeamRole = "founder" | "partner";
+export type FeeMode = "founder_pays" | "each_pays";
 export type Member = { userId: string; role: TeamRole; name: string };
 export type TeamView = {
   id: string;
@@ -21,6 +23,10 @@ export type TeamView = {
   open: boolean;
   members: Member[];
   partnerSpotsLeft: number;
+  /** Who pays the project-path fee. */
+  feeMode: FeeMode;
+  /** Partners who have saved their own project (used in "each pays" mode). Never the content. */
+  readyPartnerIds: string[];
   /** Only filled in for the founder. */
   inviteToken: string | null;
 };
@@ -29,6 +35,23 @@ type TeamRow = typeof teams.$inferSelect;
 type Conn = Db | Tx;
 
 const tokenBinding = (teamId: string) => ({ table: "teams", column: "invite_token_enc", rowId: teamId });
+const draftBinding = (memberRowId: number) => ({ table: "team_members", column: "project_enc", rowId: String(memberRowId) });
+const draftHackatimeBinding = (memberRowId: number) => ({
+  table: "team_members",
+  column: "project_hackatime_id_enc",
+  rowId: String(memberRowId),
+});
+/** Bindings for a partner's frozen project on `application_members` (composite key). */
+export const memberContentBinding = (applicationId: string, userId: string) => ({
+  table: "application_members",
+  column: "content_enc",
+  rowId: `${applicationId}:${userId}`,
+});
+export const memberHackatimeBinding = (applicationId: string, userId: string) => ({
+  table: "application_members",
+  column: "hackatime_id_enc",
+  rowId: `${applicationId}:${userId}`,
+});
 
 function isOpen(t: Pick<TeamRow, "lockedAt" | "dissolvedAt">) {
   return t.lockedAt === null && t.dissolvedAt === null;
@@ -59,9 +82,18 @@ async function releaseAll(tx: Tx, teamId: string) {
     .where(and(eq(teamMembers.teamId, teamId), isNull(teamMembers.releasedAt)));
 }
 
-async function activeMembers(conn: Conn, teamId: string) {
+/** Active members with their saved-project markers (and the row id the draft is bound to). */
+async function activeMemberRows(conn: Conn, teamId: string) {
   return conn
-    .select({ userId: teamMembers.userId, role: teamMembers.role })
+    .select({
+      id: teamMembers.id,
+      userId: teamMembers.userId,
+      role: teamMembers.role,
+      projectEnc: teamMembers.projectEnc,
+      projectSeconds: teamMembers.projectSeconds,
+      projectHackatimeIdEnc: teamMembers.projectHackatimeIdEnc,
+      projectSavedAt: teamMembers.projectSavedAt,
+    })
     .from(teamMembers)
     .where(and(eq(teamMembers.teamId, teamId), isNull(teamMembers.releasedAt)))
     .orderBy(asc(teamMembers.joinedAt), asc(teamMembers.id));
@@ -105,7 +137,7 @@ export async function namesOf(conn: Conn, userIds: string[]): Promise<Map<string
 }
 
 async function toView(conn: Conn, team: TeamRow, viewerId: string): Promise<TeamView> {
-  const rows = await activeMembers(conn, team.id);
+  const rows = await activeMemberRows(conn, team.id);
   const names = await namesOf(
     conn,
     rows.map((r) => r.userId),
@@ -114,8 +146,10 @@ async function toView(conn: Conn, team: TeamRow, viewerId: string): Promise<Team
     id: team.id,
     version: team.version,
     open: isOpen(team),
-    members: rows.map((r) => ({ ...r, name: names.get(r.userId) ?? "(no name)" })),
+    members: rows.map((r) => ({ userId: r.userId, role: r.role, name: names.get(r.userId) ?? "(no name)" })),
     partnerSpotsLeft: Math.max(0, TEAM_MAX_MEMBERS - rows.length),
+    feeMode: team.feeMode,
+    readyPartnerIds: rows.filter((r) => r.role === "partner" && r.projectSavedAt).map((r) => r.userId),
     inviteToken: team.founderUserId === viewerId ? decrypt<string>(team.inviteTokenEnc, tokenBinding(team.id)) : null,
   };
 }
@@ -151,8 +185,9 @@ export async function formTeam(user: { id: string }): Promise<FormResult> {
       if (existing) return { ok: true, team: await toView(tx, existing, user.id) } as const;
     }
     const live = await ownLiveApplication(tx, user.id);
-    // After "Needs changes" or a cut, a founder may form a team for their next submission.
-    if (live && live.status !== "rejected_malformed" && live.status !== "rejected_cut") {
+    // After "Needs changes", a cut, or a fraud rejection that banned a partner (banned users are
+    // refused just below), a founder may form a team for their next submission.
+    if (live && !["rejected_malformed", "rejected_cut", "rejected_fraud"].includes(live.status)) {
       return { ok: false, reason: "has_application" } as const;
     }
     if (await isBannedFromProgram(tx, user.id)) return { ok: false, reason: "has_application" } as const;
@@ -220,6 +255,13 @@ export async function kickPartner(user: { id: string }, partnerUserId: string): 
   });
 }
 
+/** Switches who pays the fee. Counts as a team change; partners' saved projects are kept. */
+export async function setFeeMode(user: { id: string }, mode: FeeMode): Promise<FounderActionResult> {
+  return asFounder(user.id, async (tx, team) => {
+    if (team.feeMode !== mode) await bump(tx, team.id, { feeMode: mode });
+  });
+}
+
 export type DissolveResult = { ok: true } | { ok: false; reason: "no_team" | "locked" | "has_application" };
 
 /** Dissolves an open team that no application uses yet, releasing everyone. */
@@ -259,6 +301,81 @@ export async function leaveTeam(user: { id: string }): Promise<LeaveResult> {
   });
 }
 
+export type PartnerProject = {
+  content: PartnerProjectContent;
+  seconds: number;
+  savedAt: Date;
+};
+
+export type PartnerProjectView = {
+  teamId: string;
+  founderName: string;
+  feeMode: FeeMode;
+  open: boolean;
+  project: PartnerProject | null;
+};
+
+/** The partner's own team and saved project, for their portal. Null unless they're an active partner. */
+export async function getMyPartnerProject(userId: string): Promise<PartnerProjectView | null> {
+  const [row] = await db()
+    .select({ member: teamMembers, team: teams })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "partner"), isNull(teamMembers.releasedAt)))
+    .limit(1);
+  if (!row) return null;
+  const names = await namesOf(db(), [row.team.founderUserId]);
+  const m = row.member;
+  return {
+    teamId: row.team.id,
+    founderName: names.get(row.team.founderUserId) ?? "(no name)",
+    feeMode: row.team.feeMode,
+    open: isOpen(row.team),
+    project:
+      m.projectEnc && m.projectSeconds !== null && m.projectSavedAt
+        ? { content: decrypt<PartnerProjectContent>(m.projectEnc, draftBinding(m.id)), seconds: m.projectSeconds, savedAt: m.projectSavedAt }
+        : null,
+  };
+}
+
+export type SaveProjectResult =
+  | { ok: true }
+  | { ok: false; reason: "not_partner" | "locked" | "founder_pays" };
+
+/**
+ * Saves a partner's own project with the hours and Hackatime account read in their session.
+ * Callers validate the content and check the hours first. Counts as a team change.
+ */
+export async function savePartnerProject(
+  user: { id: string },
+  content: PartnerProjectContent,
+  hours: { seconds: number; hackatimeId: string },
+): Promise<SaveProjectResult> {
+  return db().transaction(async (tx) => {
+    await lockUser(tx, user.id);
+    const [m] = await tx
+      .select({ id: teamMembers.id, teamId: teamMembers.teamId, role: teamMembers.role })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.userId, user.id), isNull(teamMembers.releasedAt)))
+      .limit(1);
+    if (m?.role !== "partner") return { ok: false, reason: "not_partner" } as const;
+    const team = await lockTeam(tx, m.teamId);
+    if (!team || !isOpen(team)) return { ok: false, reason: "locked" } as const;
+    if (team.feeMode !== "each_pays") return { ok: false, reason: "founder_pays" } as const;
+    await tx
+      .update(teamMembers)
+      .set({
+        projectEnc: encrypt(content, draftBinding(m.id)),
+        projectSeconds: hours.seconds,
+        projectHackatimeIdEnc: encrypt(hours.hackatimeId, draftHackatimeBinding(m.id)),
+        projectSavedAt: new Date(),
+      })
+      .where(eq(teamMembers.id, m.id));
+    await bump(tx, team.id);
+    return { ok: true } as const;
+  });
+}
+
 export type InviteRefusal =
   | "invalid" // unknown, replaced, or the team was dissolved
   | "banned"
@@ -271,7 +388,7 @@ export type InviteRefusal =
   | "on_other_team";
 
 export type InviteCheck =
-  | { ok: true; teamId: string; founderName: string; partnerSpotsLeft: number }
+  | { ok: true; teamId: string; founderName: string; partnerSpotsLeft: number; feeMode: FeeMode }
   | { ok: false; reason: InviteRefusal };
 
 async function checkInvite(conn: Conn, token: string, viewerId: string | null): Promise<InviteCheck> {
@@ -288,8 +405,11 @@ async function checkInvite(conn: Conn, token: string, viewerId: string | null): 
   if (viewerId) {
     if (await isBannedFromProgram(conn, viewerId)) return { ok: false, reason: "banned" };
     const live = await ownLiveApplication(conn, viewerId);
-    // Someone whose last application was cut may join a team; anything else live blocks it.
-    if (live && live.status !== "rejected_cut") return { ok: false, reason: "has_application" };
+    // Someone whose last application was cut, or rejected for a teammate's fraud (they weren't
+    // banned: that's checked above), may join a team; anything else live blocks it.
+    if (live && live.status !== "rejected_cut" && live.status !== "rejected_fraud") {
+      return { ok: false, reason: "has_application" };
+    }
     const m = await membershipOf(conn, viewerId);
     if (m) return { ok: false, reason: m.role === "founder" ? "founds_other_team" : "on_other_team" };
   }
@@ -304,6 +424,7 @@ async function checkInvite(conn: Conn, token: string, viewerId: string | null): 
     teamId: team.id,
     founderName: names.get(team.founderUserId) ?? "(no name)",
     partnerSpotsLeft: TEAM_MAX_MEMBERS - n,
+    feeMode: team.feeMode,
   };
 }
 
@@ -343,7 +464,14 @@ export async function joinTeam(user: { id: string }, token: string): Promise<Joi
 // ---------------------------------------------------------------------------
 // Application lifecycle hooks (called inside the application and admin transactions)
 
-export type SubmitTeam = { teamId: string | null; members: { userId: string; role: TeamRole }[] };
+/** A partner's saved project as read at submit, with their Hackatime account id decrypted. */
+export type SubmitProject = PartnerProject & { hackatimeId: string };
+
+export type SubmitTeam = {
+  teamId: string | null;
+  feeMode: FeeMode;
+  members: { userId: string; role: TeamRole; name: string; project: SubmitProject | null }[];
+};
 
 /**
  * Locks the founder's open team for submission and checks the form's team version.
@@ -358,28 +486,77 @@ export async function teamForSubmit(
   if (m?.role !== "founder") {
     // The form showed a team that has since gone away.
     if (postedVersion !== null) return "stale";
-    return { teamId: null, members: [{ userId: founderId, role: "founder" }] };
+    const names = await namesOf(tx, [founderId]);
+    return {
+      teamId: null,
+      feeMode: "founder_pays",
+      members: [{ userId: founderId, role: "founder", name: names.get(founderId) ?? "(no name)", project: null }],
+    };
   }
   const team = await lockTeam(tx, m.teamId);
   if (!team || !isOpen(team) || postedVersion !== team.version) return "stale";
-  return { teamId: team.id, members: await activeMembers(tx, team.id) };
+  const rows = await activeMemberRows(tx, team.id);
+  const names = await namesOf(
+    tx,
+    rows.map((r) => r.userId),
+  );
+  return {
+    teamId: team.id,
+    feeMode: team.feeMode,
+    members: rows.map((r) => ({
+      userId: r.userId,
+      role: r.role,
+      name: names.get(r.userId) ?? "(no name)",
+      project:
+        r.projectEnc && r.projectSeconds !== null && r.projectSavedAt && r.projectHackatimeIdEnc
+          ? {
+              content: decrypt<PartnerProjectContent>(r.projectEnc, draftBinding(r.id)),
+              seconds: r.projectSeconds,
+              savedAt: r.projectSavedAt,
+              hackatimeId: decrypt<string>(r.projectHackatimeIdEnc, draftHackatimeBinding(r.id)),
+            }
+          : null,
+    })),
+  };
 }
 
 /** Records who's on the application and locks the team. */
-export async function lockForApplication(tx: Tx, applicationId: string, submit: SubmitTeam) {
-  await tx.insert(applicationMembers).values(submit.members.map((m) => ({ applicationId, ...m })));
+export async function lockForApplication(tx: Tx, applicationId: string, submit: SubmitTeam, creditedPerPartner: number) {
+  // In "each pays" mode each partner's saved project is frozen onto the application as submitted.
+  const freeze = submit.feeMode === "each_pays";
+  await tx.insert(applicationMembers).values(
+    submit.members.map((m) => {
+      const p = freeze && m.role === "partner" ? m.project : null;
+      return {
+        applicationId,
+        userId: m.userId,
+        role: m.role,
+        ...(p && {
+          contentEnc: encrypt(p.content, memberContentBinding(applicationId, m.userId)),
+          hackatimeSecondsSnapshot: p.seconds,
+          creditedSeconds: creditedPerPartner,
+          hackatimeIdEnc: encrypt(p.hackatimeId, memberHackatimeBinding(applicationId, m.userId)),
+        }),
+      };
+    }),
+  );
   if (submit.teamId) await bump(tx, submit.teamId, { lockedAt: new Date() });
 }
 
-/** Applies a review decision to the application's team. */
+/**
+ * Applies a review decision to the application's team. An interview invite isn't final, so the
+ * team stays locked with everyone on it until the round-two decision.
+ */
 export async function onDecision(
   tx: Tx,
   teamId: string | null,
-  status: "approved" | "rejected_cut" | "rejected_malformed" | "rejected_fraud",
+  status: "interview" | "approved" | "rejected_cut" | "rejected_malformed" | "rejected_fraud",
 ) {
   if (!teamId) return;
   await lockTeam(tx, teamId);
-  if (status === "rejected_malformed") {
+  if (status === "interview") {
+    await bump(tx, teamId);
+  } else if (status === "rejected_malformed") {
     await bump(tx, teamId, { lockedAt: null });
   } else {
     await releaseAll(tx, teamId);
@@ -418,6 +595,38 @@ export async function membersOfApplication(applicationId: string): Promise<Membe
   return rows
     .map((r) => ({ ...r, name: names.get(r.userId) ?? "(no name)" }))
     .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === "founder" ? -1 : 1));
+}
+
+/** A partner's project as frozen on an "each pays" application. */
+export type MemberProject = {
+  userId: string;
+  name: string;
+  content: PartnerProjectContent;
+  snapshotSeconds: number;
+  creditedSeconds: number;
+  hackatimeId: string;
+};
+
+/** Partners' frozen projects on an application (empty unless it was submitted "each pays"). */
+export async function memberProjectsOf(applicationId: string): Promise<MemberProject[]> {
+  const rows = await db()
+    .select()
+    .from(applicationMembers)
+    .where(and(eq(applicationMembers.applicationId, applicationId), isNotNull(applicationMembers.contentEnc)));
+  const names = await namesOf(
+    db(),
+    rows.map((r) => r.userId),
+  );
+  return rows
+    .map((r) => ({
+      userId: r.userId,
+      name: names.get(r.userId) ?? "(no name)",
+      content: decrypt<PartnerProjectContent>(r.contentEnc!, memberContentBinding(applicationId, r.userId)),
+      snapshotSeconds: r.hackatimeSecondsSnapshot!,
+      creditedSeconds: r.creditedSeconds!,
+      hackatimeId: decrypt<string>(r.hackatimeIdEnc!, memberHackatimeBinding(applicationId, r.userId)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** The live application on a team, if it has one. */

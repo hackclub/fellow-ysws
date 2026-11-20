@@ -33,7 +33,18 @@ export default async function JoinPage({ params }: PageProps<"/join/[token]">) {
               left.
             </p>
             <ul className="bullets small">
-              <li>partners don&apos;t pay hours. joining adds 2 hours to the fee {check.founderName} pays from their project (2 hours per person on the team).</li>
+              {check.feeMode === "each_pays" ? (
+                <li data-testid="join-fee">
+                  {check.founderName} chose &ldquo;everyone pays for themselves&rdquo;. you&apos;ll add a shipped project of
+                  your own: 2 hours or more on your own hackatime, a code url and a demo link. no video needed.
+                </li>
+              ) : (
+                <li data-testid="join-fee">
+                  partners don&apos;t pay hours. joining adds 2 hours to the fee {check.founderName} pays from their project
+                  (2 hours per person on the team).
+                </li>
+              )}
+              <li>{check.founderName} can change who pays the fee until they submit.</li>
               <li>you&apos;ll see the application&apos;s status and any note from the reviewers.</li>
               <li>
                 while you&apos;re on this team you can&apos;t apply on your own or join another team. you&apos;re free again
