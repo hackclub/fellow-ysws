@@ -47,8 +47,14 @@ export async function syncAirtableAction(): Promise<SyncState> {
       message: r.reason === "busy" ? "a sync is already running. try again in a moment." : "airtable isn't set up on this server.",
     };
   }
-  if (r.synced === 0 && r.failed === 0) return { tone: "ok", message: "nothing to sync. airtable is up to date." };
+  const held = r.missingAddress
+    ? `${r.missingAddress} held back: no mailing address from Hack Club Auth yet. they'll sync once the applicant signs in again with an address.`
+    : null;
+  if (r.synced === 0 && r.failed === 0) {
+    return held ? { tone: "error", message: `nothing synced. ${held}` } : { tone: "ok", message: "nothing to sync. airtable is up to date." };
+  }
   const parts = [`synced ${r.synced} review${r.synced === 1 ? "" : "s"} to airtable.`];
   if (r.failed) parts.push(`${r.failed} failed: ${r.errors.join("; ")}`);
-  return { tone: r.failed ? "error" : "ok", message: parts.join(" ") };
+  if (held) parts.push(held);
+  return { tone: r.failed || held ? "error" : "ok", message: parts.join(" ") };
 }

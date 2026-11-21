@@ -10,9 +10,14 @@ Source: github.com/hackclub/auth + live discovery doc, checked 2026-11-11.
   `${APP_URL}/auth/hackclub/callback`.
 - Community apps may request: `openid profile email name slack_id verification_status`.
   We request `openid profile email slack_id`, plus anything in `HACKCLUB_AUTH_EXTRA_SCOPES`.
-- The discovery doc also lists a `birthdate` scope and an `address` claim. Set
-  `HACKCLUB_AUTH_EXTRA_SCOPES="birthdate address"` only if the app is approved for them:
-  an unapproved scope can make sign-in fail for everyone. Test a sign-in after changing it.
+- `birthdate` and `address` are HQ-official-only scopes (`OAuthScope::HQ_OFFICIAL_SCOPES` in
+  hackclub/auth, checked 2026-11-21); community apps can't request them. The Airtable sync needs
+  addresses, so production must run as an HQ-official app with
+  `HACKCLUB_AUTH_EXTRA_SCOPES="birthdate address"`. An unapproved scope can make sign-in fail for
+  everyone, so test a sign-in after changing it.
+- The `address` claim is the user's primary address in standard OIDC shape
+  (`street_address` with lines joined by `\n`, `locality`, `region`, `postal_code`, `country`),
+  or absent if they have none.
 
 ## Claims we use
 | Claim | Scope | Stored as |

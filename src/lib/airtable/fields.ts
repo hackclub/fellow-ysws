@@ -25,6 +25,12 @@ export function splitName(pii: UserPii): { first: string | null; last: string | 
   return { first: parts[0], last: parts.slice(1).join(" ") || null };
 }
 
+/** True when the user has a mailing address we can ship to (YSWS needs one on every record). */
+export function hasMailingAddress(pii: UserPii): boolean {
+  const a = pii.address;
+  return Boolean(a?.line1 && a.city && a.country);
+}
+
 /** The repository owner from a GitHub code URL. */
 export function githubOwner(codeUrl: string): string | null {
   const repo = normalizeGithubRepo(codeUrl);

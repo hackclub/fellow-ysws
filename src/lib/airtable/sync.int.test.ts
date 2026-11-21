@@ -1,10 +1,12 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb, db } from "@/db";
-import { applicationMembers, applications } from "@/db/schema";
+import { applicationMembers, applications, users } from "@/db/schema";
+import { encrypt } from "@/lib/crypto";
+import { piiBinding } from "@/lib/auth/session";
 import { jar } from "../../../test/cookie-jar";
 import { resetDb } from "../../../test/db";
-import { aidInput, makeUser, projectInput, signInAsAdmin } from "../../../test/factories";
+import { aidInput, makeUser, projectInput, signInAsAdmin, testAddress } from "../../../test/factories";
 import { fake, installFakeProviders } from "../../../test/fake-providers";
 
 vi.mock("next/headers", async () => (await import("../../../test/cookie-jar")).nextHeadersMock());
@@ -55,11 +57,16 @@ describe("syncReviewsToAirtable", () => {
     await decide(approvedAid, "approve", "", "good pitch");
 
     expect(await countPendingSync()).toBe(2);
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [], missingAddress: 0 });
     expect(fake.airtable.map((r) => r.fields["Justification - Additional Justification"]).sort()).toEqual(["great demo", "too thin"]);
     expect(fake.airtable[0].fields).toMatchObject({
       "Justification - Submitter Hackatime ID": "8997",
       "Optional - Override Hours Spent": 2,
+      "Address (Line 1)": "15 Falls Rd",
+      City: "Shelburne",
+      "State / Province": "VT",
+      "ZIP / Postal Code": "05482",
+      Country: "US",
     });
 
     const [row] = await db().select().from(applications).where(eq(applications.id, approved));
@@ -68,7 +75,7 @@ describe("syncReviewsToAirtable", () => {
 
     // nothing left: a second sync creates nothing
     expect(await countPendingSync()).toBe(0);
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [], missingAddress: 0 });
     expect(fake.airtable).toHaveLength(2);
   });
 
@@ -78,13 +85,13 @@ describe("syncReviewsToAirtable", () => {
     const cutLater = await project();
     await decide(selected, "approve", "", "first pass");
     await decide(cutLater, "approve", "", "first pass");
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [], missingAddress: 0 });
     const before = await db().select().from(applications).where(eq(applications.id, selected));
 
     await decide(selected, "select", "", "great call");
     await decide(cutLater, "reject_cut", "not this round", "weak call");
     expect(await countPendingSync()).toBe(0);
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [], missingAddress: 0 });
     expect(fake.airtable).toHaveLength(2);
     expect(fake.airtable.map((r) => r.fields["Justification - Additional Justification"])).toEqual(["first pass", "first pass"]);
     const [after] = await db().select().from(applications).where(eq(applications.id, selected));
@@ -118,6 +125,27 @@ describe("syncReviewsToAirtable", () => {
     expect(r).toMatchObject({ ok: true, synced: 0, failed: 1, errors: [expect.stringMatching(/422: boom/)] });
     expect(await countPendingSync()).toBe(1);
     expect((await syncReviewsToAirtable()).ok && fake.airtable).toHaveLength(1);
+  });
+
+  it("holds back applicants with no mailing address until they have one", async () => {
+    await admin();
+    const u = await makeUser(undefined, { address: null });
+    fake.tokens.set(`t-${u.id}`, { sub: u.hcId });
+    fake.projects.set(u.hcId, [{ name: "big-project", total_seconds: 5 * 3600 }]);
+    fake.hackatimeIds.set(u.hcId, 8997);
+    const r = await submitApplication(u, projectInput, `t-${u.id}`);
+    if (!r.ok) throw new Error("setup");
+    await decide(r.id, "approve", "", "great demo");
+    await decide(await project(), "approve", "", "has an address");
+
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 1, failed: 0, errors: [], missingAddress: 1 });
+    expect(fake.airtable).toHaveLength(1);
+    expect(await countPendingSync()).toBe(1);
+
+    // they sign in again and Hack Club Auth now sends an address
+    await db().update(users).set({ piiEnc: encrypt({ hcId: u.hcId, name: "N", email: "n@x.dev", slackId: null, address: testAddress }, piiBinding(u.id)) }).where(eq(users.id, u.id));
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 1, failed: 0, errors: [], missingAddress: 0 });
+    expect(await countPendingSync()).toBe(0);
   });
 });
 
@@ -172,7 +200,7 @@ describe("syncReviewsToAirtable — everyone pays for themselves", () => {
     const { id, partners } = await teamApp(2, "each_pays");
     await decide(id, "approve", "", "solid team");
     expect(await countPendingSync()).toBe(3);
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 3, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 3, failed: 0, errors: [], missingAddress: 0 });
     expect(fake.airtable).toHaveLength(3);
     expect(fake.airtable.map((r) => r.fields["Optional - Override Hours Spent"])).toEqual([2, 2, 2]);
     expect(fake.airtable.map((r) => r.fields["Code URL"]).sort()).toEqual(
@@ -185,7 +213,7 @@ describe("syncReviewsToAirtable — everyone pays for themselves", () => {
     const members = await db().select().from(applicationMembers).where(eq(applicationMembers.applicationId, id));
     expect(members.filter((m) => m.role === "partner").every((m) => m.airtableRecordId?.startsWith("rec"))).toBe(true);
     expect(await countPendingSync()).toBe(0);
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 0, failed: 0, errors: [], missingAddress: 0 });
   });
 
   it("creates one record with the whole fee for a founder-pays team", async () => {
@@ -207,7 +235,7 @@ describe("syncReviewsToAirtable — everyone pays for themselves", () => {
     expect(await countPendingSync()).toBe(2);
     fake.airtableFailStatus = 503;
     expect(await syncReviewsToAirtable()).toMatchObject({ ok: true, synced: 0, failed: 2 });
-    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [] });
+    expect(await syncReviewsToAirtable()).toEqual({ ok: true, synced: 2, failed: 0, errors: [], missingAddress: 0 });
     expect(fake.airtable).toHaveLength(2);
     expect(fake.airtable.every((r) => r.fields["Code URL"] !== projectInput.codeUrl)).toBe(true);
   });

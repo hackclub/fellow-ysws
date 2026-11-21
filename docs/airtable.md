@@ -12,6 +12,12 @@ that hasn't been synced yet. Code: `src/lib/airtable/sync.ts` (what syncs) and
 | Needs changes (note required) | no | "Needs changes", can resubmit |
 | Reject — fraud (justification required) | no, and the applicant is banned | "Not accepted", can't apply again |
 
+**Addresses are required.** A record whose applicant (or partner) has no mailing address (line 1,
+city, country) is held back and the sync says how many. It goes out on a later sync once they sign in
+again and Hack Club Auth sends an address. For this to work, `HACKCLUB_AUTH_EXTRA_SCOPES` must
+include `address` (an HQ-official-only scope, see hackclub-auth.md); users who signed in before it was
+set have no stored address until their next sign-in.
+
 Financial aid applications never sync. Each application syncs once (`applications.airtable_record_id`).
 "Automation - Submit to Unified YSWS" is never ticked: a human ticks it in Airtable.
 
@@ -28,7 +34,7 @@ Financial aid applications never sync. Each application syncs once (`application
 | First Name, Last Name | Hack Club Auth `given_name`/`family_name`, else the full name split on the first space |
 | Email | Hack Club Auth |
 | GitHub Username | owner of the GitHub code URL |
-| Address fields, Birthday | Hack Club Auth `address`/`birthdate` claims, if the app is allowed those scopes (see hackclub-auth.md) |
+| Address fields, Birthday | Hack Club Auth `address`/`birthdate` claims (see hackclub-auth.md) |
 | Optional - Override Hours Spent | logged Hackatime hours at submission, capped at 2 |
 | Optional - Override Hours Spent Justification | Hackatime id, project, logged hours, the cap, and the reviewer's justification (the table's Unified Justification formula uses this field alone when it's set) |
 | Justification - Hackatime Project Name(s) + Date Range(s) | project name, all time through the submission date |
