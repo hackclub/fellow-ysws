@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { NextResponse, type NextRequest } from "next/server";
 import { isTestMode } from "@/lib/test-mode";
 
-type Identity = { sub: string; name: string; email: string; slack_id: string };
+type Identity = { sub: string; name: string; email: string; slack_id: string; address: Record<string, string> };
+
+// Same shape as Hack Club Auth's `address` claim (the user's primary address).
+const MOCK_ADDRESS = { street_address: "15 Falls Rd", locality: "Shelburne", region: "VT", postal_code: "05482", country: "US" };
 type Project = { name: string; total_seconds: number };
 
 const g = globalThis as unknown as {
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   if (route === "oauth/approve") {
     const sub = form.get("sub") || "ident!e2e-user";
     const code = randomBytes(8).toString("hex");
-    state.codes.set(code, { sub, name: `Test ${sub}`, email: `${sub.replace(/\W/g, "")}@example.com`, slack_id: "U000" });
+    state.codes.set(code, { sub, name: `Test ${sub}`, email: `${sub.replace(/\W/g, "")}@example.com`, slack_id: "U000", address: MOCK_ADDRESS });
     const back = new URL(form.get("redirect_uri")!);
     back.searchParams.set("code", code);
     back.searchParams.set("state", form.get("state") ?? "");

@@ -10,7 +10,7 @@ import { justificationBinding, toView } from "@/lib/applications/service";
 import type { PartnerProjectContent, ProjectContent } from "@/lib/applications/shared";
 import { userHackatimeIdBinding } from "@/lib/hackatime";
 import { memberContentBinding, memberHackatimeBinding } from "@/lib/teams/service";
-import { buildFields } from "./fields";
+import { buildFields, hasMailingAddress } from "./fields";
 
 /**
  * Pushes finished project reviews to the YSWS Airtable table (docs/airtable.md).
@@ -19,7 +19,8 @@ import { buildFields } from "./fields";
  * teams). The project is taken whatever the interview's outcome, so a record is created once at the
  * invite and the round-two decision never touches it. "approved" stays for approvals from before
  * interviews existed. Never synced: financial aid, "Needs changes", fraud in round one, or anything
- * still pending.
+ * still pending. A record whose applicant has no mailing address from Hack Club Auth is held back
+ * (YSWS needs one) and goes out on a later sync, once they've signed in again with an address.
  */
 const SYNCED_STATUSES = ["interview", "approved", "rejected_cut"] as const;
 const BATCH = 10; // Airtable's per-request limit
@@ -68,7 +69,7 @@ export async function countPendingSync(): Promise<number> {
 }
 
 export type SyncResult =
-  | { ok: true; synced: number; failed: number; errors: string[] }
+  | { ok: true; synced: number; failed: number; errors: string[]; missingAddress: number }
   | { ok: false; reason: "not_configured" | "busy" };
 
 /** One Airtable record to create, and where its record id is written back. */
@@ -137,7 +138,10 @@ export async function syncReviewsToAirtable(): Promise<SyncResult> {
           justification: justificationOf(app),
         },
       })),
-    ].sort((a, b) => (a.decidedAt?.getTime() ?? 0) - (b.decidedAt?.getTime() ?? 0));
+    ]
+      .filter((c) => hasMailingAddress(c.fields.pii))
+      .sort((a, b) => (a.decidedAt?.getTime() ?? 0) - (b.decidedAt?.getTime() ?? 0));
+    const missingAddress = founderRows.length + memberRows.length - candidates.length;
 
     let synced = 0;
     let failed = 0;
@@ -174,7 +178,7 @@ export async function syncReviewsToAirtable(): Promise<SyncResult> {
       }
       synced += batch.length;
     }
-    return { ok: true, synced, failed, errors } as const;
+    return { ok: true, synced, failed, errors, missingAddress } as const;
   });
 }
 

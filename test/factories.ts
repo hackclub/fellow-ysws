@@ -7,11 +7,12 @@ import { createSession, loadUser, piiBinding } from "@/lib/auth/session";
 import type { ApplicationInput, ApplicationStatus } from "@/lib/applications/shared";
 import { noteBinding } from "@/lib/applications/service";
 
-export async function makeUser(hcId = `ident!${randomUUID().slice(0, 8)}`) {
+export const testAddress = { line1: "15 Falls Rd", line2: null, city: "Shelburne", state: "VT", postalCode: "05482", country: "US" };
+
+export async function makeUser(hcId = `ident!${randomUUID().slice(0, 8)}`, opts: { address?: typeof testAddress | null } = {}) {
   const id = randomUUID();
-  await db()
-    .insert(users)
-    .values({ id, hcIdHash: hcIdHash(hcId), piiEnc: encrypt({ hcId, name: `Name ${hcId}`, email: `${hcId}@x.dev`, slackId: null }, piiBinding(id)) });
+  const pii = { hcId, name: `Name ${hcId}`, email: `${hcId}@x.dev`, slackId: null, address: opts.address === undefined ? testAddress : opts.address };
+  await db().insert(users).values({ id, hcIdHash: hcIdHash(hcId), piiEnc: encrypt(pii, piiBinding(id)) });
   return { id, hcId };
 }
 
